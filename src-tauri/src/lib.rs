@@ -2,6 +2,13 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use tauri::Manager;
 
+#[cfg(target_os = "android")]
+use jni::objects::{JObject, JString};
+#[cfg(target_os = "android")]
+use jni::JNIEnv;
+#[cfg(target_os = "android")]
+use ndk_context::android_context;
+
 /// Базовая папка для файлов приложения. Относительные пути хранятся от неё.
 fn files_base_dir(app: &tauri::AppHandle) -> Result<PathBuf, String> {
   #[cfg(target_os = "android")]
@@ -18,6 +25,89 @@ fn files_base_dir(app: &tauri::AppHandle) -> Result<PathBuf, String> {
       .app_data_dir()
       .map_err(|e: tauri::Error| e.to_string())
       .map(|p| p.join("files"))
+  }
+}
+
+#[cfg(target_os = "android")]
+fn absolute_path_from_relative(app: &tauri::AppHandle, path: &str) -> Result<PathBuf, String> {
+  let base = files_base_dir(app)?;
+  let p = PathBuf::from(path);
+  Ok(if p.is_absolute() { p } else { base.join(path) })
+}
+
+#[cfg(target_os = "android")]
+fn set_wallpaper_android(app: &tauri::AppHandle, path: String) -> Result<(), String> {
+  let ctx = android_context();
+  let vm = unsafe {
+    jni::JavaVM::from_raw(ctx.vm() as *mut _).map_err(|e| format!("JavaVM error: {}", e))?
+  };
+  let mut env = vm
+    .attach_current_thread()
+    .map_err(|e| format!("JNI attach thread: {}", e))?;
+  let context = unsafe { JObject::from_raw(ctx.context() as *mut _) };
+
+  let full = absolute_path_from_relative(app, &path)?;
+  let full_str = full
+    .to_str()
+    .ok_or_else(|| "Invalid path".to_string())?
+    .to_string();
+
+  let path_j: JString = env
+    .new_string(full_str)
+    .map_err(|e| format!("JNI new_string: {}", e))?;
+
+  // Bitmap bitmap = BitmapFactory.decodeFile(path)
+  let bitmap_factory = env
+    .find_class("android/graphics/BitmapFactory")
+    .map_err(|e| format!("Find BitmapFactory: {}", e))?;
+  let bitmap = env
+    .call_static_method(
+      bitmap_factory,
+      "decodeFile",
+      "(Ljava/lang/String;)Landroid/graphics/Bitmap;",
+      &[jni::objects::JValue::Object(&path_j)],
+    )
+    .map_err(|e| format!("BitmapFactory.decodeFile: {}", e))?
+    .l()
+    .map_err(|e| format!("Get bitmap object: {}", e))?;
+
+  // WallpaperManager wm = WallpaperManager.getInstance(context)
+  let wm_class = env
+    .find_class("android/app/WallpaperManager")
+    .map_err(|e| format!("Find WallpaperManager: {}", e))?;
+  let wm_obj = env
+    .call_static_method(
+      wm_class,
+      "getInstance",
+      "(Landroid/content/Context;)Landroid/app/WallpaperManager;",
+      &[jni::objects::JValue::Object(&context)],
+    )
+    .map_err(|e| format!("WallpaperManager.getInstance: {}", e))?
+    .l()
+    .map_err(|e| format!("Get WallpaperManager object: {}", e))?;
+
+  // wm.setBitmap(bitmap)
+  env
+    .call_method(
+      wm_obj,
+      "setBitmap",
+      "(Landroid/graphics/Bitmap;)V",
+      &[jni::objects::JValue::Object(&bitmap)],
+    )
+    .map_err(|e| format!("WallpaperManager.setBitmap: {}", e))?;
+
+  Ok(())
+}
+
+#[tauri::command]
+fn set_device_wallpaper(app: tauri::AppHandle, path: String) -> Result<(), String> {
+  #[cfg(target_os = "android")]
+  {
+    return set_wallpaper_android(&app, path);
+  }
+  #[cfg(not(target_os = "android"))]
+  {
+    Err("Only supported on Android".to_string())
   }
 }
 
@@ -198,6 +288,7 @@ pub fn run() {
     get_file_name_from_path,
     read_file_from_app,
     delete_app_file,
+    set_device_wallpaper,
   ])
     .setup(|app| {
       if cfg!(debug_assertions) {
