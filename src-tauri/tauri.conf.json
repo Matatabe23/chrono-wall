@@ -12,7 +12,7 @@
 	"app": {
 		"windows": [
 			{
-				"title": "file encryptor",
+				"title": "chrono wall",
 				"width": 1000,
 				"height": 600,
 				"resizable": true,
