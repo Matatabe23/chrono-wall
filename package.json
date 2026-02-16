@@ -10,7 +10,7 @@
 		"tauri:dev": "tauri dev",
 		"tauri:build": "tauri build",
 		"tauri:generate-icons": "tauri icon src-tauri/icons/icon.png",
-		"android:package": "tauri icon src-tauri/icons/icon.png && node scripts/copy-android-icons.js && tauri android build && node scripts/copy-to-build.js android",
+		"android:package": "tauri icon src-tauri/icons/icon.png && node scripts/copy-android-icons.js && tauri android build --debug && node scripts/copy-to-build.js android",
 		"ios:package": "node scripts/run-platform-build.js ios",
 		"macos:package": "node scripts/run-platform-build.js macos",
 		"android:store": "tauri icon src-tauri/icons/icon.png && node scripts/copy-android-icons.js && tauri android build && node scripts/copy-to-build.js android",

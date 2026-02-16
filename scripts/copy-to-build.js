@@ -72,9 +72,17 @@ try {
     copyDirContents(path.join(bundle, 'macos'), 'macos');
   } else if (platform === 'android') {
     const outputs = path.join(srcTauri, 'gen', 'android', 'app', 'build', 'outputs');
+    // Пробуем сначала debug версию (не требует подписи)
+    const apkDebug = path.join(outputs, 'apk', 'universal', 'debug');
     const apkRelease = path.join(outputs, 'apk', 'universal', 'release');
     const bundleRelease = path.join(outputs, 'bundle', 'universalRelease');
-    if (fs.existsSync(apkRelease)) copyDirContents(apkRelease, 'apk');
+    if (fs.existsSync(apkDebug)) {
+      copyDirContents(apkDebug, 'apk');
+      console.log('Using debug APK (no signing required)');
+    } else if (fs.existsSync(apkRelease)) {
+      copyDirContents(apkRelease, 'apk');
+      console.log('Using release APK');
+    }
     if (fs.existsSync(bundleRelease)) copyDirContents(bundleRelease, 'bundle');
   } else if (platform === 'ios') {
     const bundle = path.join(srcTauri, 'target', 'release', 'bundle');
