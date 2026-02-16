@@ -18,10 +18,21 @@
 					v-for="collection in collections"
 					:key="collection.id"
 					class="cursor-pointer"
-					@click="openCollection(collection)"
 				>
-					<v-card-title>{{ collection.name }}</v-card-title>
-					<v-card-subtitle>ID: {{ collection.id }}</v-card-subtitle>
+					<v-card-item @click="goToCollection(collection)">
+						<template #prepend>
+							<v-avatar size="64" rounded="lg">
+								<v-img v-if="covers[collection.id]" :src="covers[collection.id]" cover />
+								<v-icon v-else size="36">mdi-image</v-icon>
+							</v-avatar>
+						</template>
+						<v-card-title>{{ collection.name }}</v-card-title>
+					</v-card-item>
+					<v-card-actions class="justify-end">
+						<v-btn icon color="error" @click.stop="confirmDelete(collection)">
+							<v-icon>mdi-delete</v-icon>
+						</v-btn>
+					</v-card-actions>
 				</v-card>
 			</div>
 
@@ -55,30 +66,59 @@
 			</v-card>
 		</v-dialog>
 
-		<!-- Диалог добавления фото в коллекцию -->
-		<AddPhotoToCollectionDialog
-			v-model="showAddPhotoDialog"
-			:collection="selectedCollection"
-			@photo-added="loadCollections"
-		/>
+		<v-dialog v-model="showDeleteDialog" max-width="480">
+			<v-card>
+				<v-card-title>Удаление коллекции</v-card-title>
+				<v-card-text>
+					<div class="mb-3">Вы уверены, что хотите удалить коллекцию «{{ deleteTarget?.name }}»?</div>
+					<v-checkbox v-model="deleteConfirmed" label="Файлы тоже удалить" />
+				</v-card-text>
+				<v-card-actions>
+					<v-spacer />
+					<v-btn text @click="closeDeleteDialog">Отмена</v-btn>
+					<v-btn color="error" :disabled="!deleteConfirmed" :loading="isDeleting" @click="doDelete">Удалить</v-btn>
+				</v-card-actions>
+			</v-card>
+		</v-dialog>
 	</v-container>
 </template>
 
 <script setup lang="ts">
 	import { ref, onMounted } from 'vue'
-	import { createCollection as createCollectionApi, listCollections } from '~/helpers/tauri/file'
-	import AddPhotoToCollectionDialog from '~/components/AddPhotoToCollectionDialog.vue'
+	import { createCollection as createCollectionApi, listCollections, listCollectionFiles, readAppFile, deleteCollection } from '~/helpers/tauri/file'
+	import { useRouter } from 'vue-router'
 
 	const collections = ref<Array<{ id: string; name: string; created_at: number }>>([])
 	const showCreateDialog = ref(false)
 	const newCollectionName = ref('')
 	const isCreating = ref(false)
-	const showAddPhotoDialog = ref(false)
-	const selectedCollection = ref<{ id: string; name: string } | null>(null)
+	const router = useRouter()
+	const covers = ref<Record<string, string | null>>({})
+	const showDeleteDialog = ref(false)
+	const deleteConfirmed = ref(true)
+	const deleteTarget = ref<{ id: string; name: string } | null>(null)
+	const isDeleting = ref(false)
 
 	async function loadCollections() {
 		try {
 			collections.value = await listCollections()
+			covers.value = {}
+			for (const c of collections.value) {
+				try {
+					const files = await listCollectionFiles(c.id)
+					const first = files.find(f => !f.startsWith('collections/' + c.id + '/_'))
+					if (first) {
+						const bytes = await readAppFile(first)
+						const blob = new Blob([bytes], { type: 'image/jpeg' })
+						const url = URL.createObjectURL(blob)
+						covers.value[c.id] = url
+					} else {
+						covers.value[c.id] = null
+					}
+				} catch {
+					covers.value[c.id] = null
+				}
+			}
 		} catch (e: any) {
 			console.error('Failed to load collections:', e)
 		}
@@ -107,9 +147,33 @@
 		}
 	}
 
-	function openCollection(collection: { id: string; name: string }) {
-		selectedCollection.value = collection
-		showAddPhotoDialog.value = true
+	function goToCollection(collection: { id: string; name: string }) {
+		router.push(`/collections/${collection.id}`)
+	}
+
+	function confirmDelete(collection: { id: string; name: string }) {
+		deleteTarget.value = collection
+		deleteConfirmed.value = true
+		showDeleteDialog.value = true
+	}
+
+	function closeDeleteDialog() {
+		showDeleteDialog.value = false
+		deleteTarget.value = null
+	}
+
+	async function doDelete() {
+		if (!deleteTarget.value) return
+		try {
+			isDeleting.value = true
+			await deleteCollection(deleteTarget.value.id)
+			closeDeleteDialog()
+			await loadCollections()
+		} catch (e) {
+			console.error(e)
+		} finally {
+			isDeleting.value = false
+		}
 	}
 
 	onMounted(() => {

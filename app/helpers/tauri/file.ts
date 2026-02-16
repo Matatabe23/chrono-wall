@@ -135,7 +135,9 @@ export async function createCollection(name: string): Promise<string> {
 /**
  * Получить список всех коллекций.
  */
-export async function listCollections(): Promise<Array<{ id: string; name: string; created_at: number }>> {
+export async function listCollections(): Promise<
+	Array<{ id: string; name: string; created_at: number }>
+> {
 	return invoke<Array<{ id: string; name: string; created_at: number }>>('list_collections');
 }
 
@@ -145,4 +147,12 @@ export async function listCollections(): Promise<Array<{ id: string; name: strin
 export async function getScreenSize(): Promise<{ width: number; height: number }> {
 	const [width, height] = await invoke<[number, number]>('get_screen_size');
 	return { width, height };
+}
+
+export async function listCollectionFiles(collectionId: string): Promise<string[]> {
+	return invoke<string[]>('list_collection_files', { collectionId });
+}
+
+export async function deleteCollection(collectionId: string): Promise<void> {
+	await invoke('delete_collection', { collectionId });
 }

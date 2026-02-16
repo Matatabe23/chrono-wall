@@ -399,7 +399,7 @@ fn create_collection(app: tauri::AppHandle, name: String) -> Result<String, Stri
 #[tauri::command]
 fn list_collections(app: tauri::AppHandle) -> Result<Vec<serde_json::Value>, String> {
   let collections_dir = files_base_dir(&app)?.join("collections");
-  
+
   if !collections_dir.exists() {
     return Ok(vec![]);
   }
@@ -410,7 +410,7 @@ fn list_collections(app: tauri::AppHandle) -> Result<Vec<serde_json::Value>, Str
   for entry in entries {
     let entry = entry.map_err(|e| e.to_string())?;
     let path = entry.path();
-    
+
     if path.is_dir() {
       let collection_id = path
         .file_name()
@@ -448,6 +448,37 @@ fn list_collections(app: tauri::AppHandle) -> Result<Vec<serde_json::Value>, Str
   Ok(collections)
 }
 
+#[tauri::command]
+fn list_collection_files(app: tauri::AppHandle, collection_id: String) -> Result<Vec<String>, String> {
+  let dir = collection_dir(&app, &collection_id)?;
+  if !dir.exists() {
+    return Ok(vec![]);
+  }
+  let mut files = Vec::new();
+  for entry in fs::read_dir(&dir).map_err(|e| e.to_string())? {
+    let entry = entry.map_err(|e| e.to_string())?;
+    let path = entry.path();
+    if path.is_file() {
+      if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
+        if !name.starts_with('_') {
+          files.push(format!("collections/{}/{}", collection_id, name));
+        }
+      }
+    }
+  }
+  files.sort();
+  Ok(files)
+}
+
+#[tauri::command]
+fn delete_collection(app: tauri::AppHandle, collection_id: String) -> Result<(), String> {
+  let dir = collection_dir(&app, &collection_id)?;
+  if dir.exists() {
+    fs::remove_dir_all(&dir).map_err(|e| e.to_string())?;
+  }
+  Ok(())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
   tauri::Builder::default()
@@ -465,6 +496,8 @@ pub fn run() {
     create_collection,
     list_collections,
     get_screen_size,
+    list_collection_files,
+    delete_collection,
   ])
     .setup(|app| {
       if cfg!(debug_assertions) {
