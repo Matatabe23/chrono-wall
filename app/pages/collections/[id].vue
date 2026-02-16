@@ -13,14 +13,31 @@
 			</div>
 		</div>
 		<div v-if="images.length > 0" class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
-			<v-img
+			<div
 				v-for="img in images"
 				:key="img.path"
-				:src="img.url"
-				aspect-ratio="1"
-				class="rounded-lg"
-				cover
-			/>
+				class="relative rounded-lg overflow-hidden border bg-grey-lighten-4"
+				:style="{ aspectRatio: (img.width && img.height) ? (img.width + ' / ' + img.height) : undefined }"
+			>
+				<v-img
+					:src="img.url"
+					class="w-full h-full"
+					:aspect-ratio="img.width && img.height ? img.width / img.height : undefined"
+					cover="false"
+				/>
+				<div class="absolute top-2 right-2 z-10">
+					<v-btn
+						icon
+						color="error"
+						size="small"
+						variant="elevated"
+						class="bg-white/90"
+						@click="confirmDeleteImage(img)"
+					>
+						<v-icon>mdi-delete</v-icon>
+					</v-btn>
+				</div>
+			</div>
 		</div>
 		<div v-else class="flex items-center justify-center pa-8 border-dashed border-2 rounded">
 			<div class="text-medium-emphasis">
@@ -34,20 +51,33 @@
 			:collection="{ id, name: title }"
 			@photo-added="onPhotoAdded"
 		/>
+		<UniversalModel v-model:isOpen="showDeleteImageDialog" maxWidth="420px">
+			<template #top>Удаление фото</template>
+			<div class="mb-3">Вы уверены, что хотите удалить это фото из коллекции?</div>
+			<template #bottom>
+				<v-spacer />
+				<v-btn text @click="closeDeleteImage">Отмена</v-btn>
+				<v-btn color="error" :loading="isDeleting" @click="doDeleteImage">Удалить</v-btn>
+			</template>
+		</UniversalModel>
 	</template>
 
 <script setup lang="ts">
 import { onMounted, ref, onBeforeUnmount } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { listCollectionFiles, readAppFile, listCollections } from '~/helpers/tauri/file'
+import { listCollectionFiles, readAppFile, listCollections, deleteAppFile } from '~/helpers/tauri/file'
 import AddPhotoToCollectionDialog from '~/components/AddPhotoToCollectionDialog.vue'
+import UniversalModel from '~/components/UniversalModel.vue'
 
 const route = useRoute()
 const router = useRouter()
 const id = route.params.id as string
-const images = ref<Array<{ path: string; url: string }>>([])
+const images = ref<Array<{ path: string; url: string; width?: number; height?: number }>>([])
 const title = ref('Коллекция')
 const showAddDialog = ref(false)
+const showDeleteImageDialog = ref(false)
+const deleteTarget = ref<{ path: string; url: string } | null>(null)
+const isDeleting = ref(false)
 
 function goBack() {
 	router.back()
@@ -69,21 +99,57 @@ async function loadImages() {
 		URL.revokeObjectURL(img.url)
 	}
 	const files = await listCollectionFiles(id)
-	const imgs: Array<{ path: string; url: string }> = []
+	const imgs: Array<{ path: string; url: string; width?: number; height?: number }> = []
 	for (const path of files) {
 		try {
 			const bytes = await readAppFile(path)
 			const blob = new Blob([bytes], { type: 'image/jpeg' })
 			const url = URL.createObjectURL(blob)
-			imgs.push({ path, url })
+			const dims = await getImageSize(url)
+			imgs.push({ path, url, width: dims?.width, height: dims?.height })
 		} catch {}
 	}
 	images.value = imgs
 }
 
+function getImageSize(url: string): Promise<{ width: number; height: number } | null> {
+	return new Promise((resolve) => {
+		const img = new Image()
+		img.onload = () => resolve({ width: img.naturalWidth, height: img.naturalHeight })
+		img.onerror = () => resolve(null)
+		img.src = url
+	})
+}
+
 async function onPhotoAdded() {
 	showAddDialog.value = false
 	await loadImages()
+}
+
+function confirmDeleteImage(img: { path: string; url: string }) {
+	deleteTarget.value = img
+	showDeleteImageDialog.value = true
+}
+
+function closeDeleteImage() {
+	showDeleteImageDialog.value = false
+	deleteTarget.value = null
+}
+
+async function doDeleteImage() {
+	if (!deleteTarget.value) return
+	try {
+		isDeleting.value = true
+		await deleteAppFile(deleteTarget.value.path)
+		URL.revokeObjectURL(deleteTarget.value.url)
+		const idx = images.value.findIndex(i => i.path === deleteTarget.value!.path)
+		if (idx !== -1) images.value.splice(idx, 1)
+		closeDeleteImage()
+	} catch (e) {
+		console.error('Failed to delete image:', e)
+	} finally {
+		isDeleting.value = false
+	}
 }
 
 onMounted(async () => {
