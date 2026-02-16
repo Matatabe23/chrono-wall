@@ -57,22 +57,6 @@ rust {
     rootDirRel = "../../../"
 }
 
-// Автоматическое копирование иконок перед сборкой
-tasks.register("copyAndroidIcons", Exec::class) {
-    group = "tauri"
-    description = "Copy Android icons before build"
-    workingDir = file("../../../")
-    commandLine("node", "scripts/copy-android-icons.js")
-    doFirst {
-        println("Copying Android icons...")
-    }
-}
-
-// Привязываем копирование иконок к задаче preBuild
-tasks.named("preBuild").configure {
-    dependsOn("copyAndroidIcons")
-}
-
 dependencies {
     implementation("androidx.webkit:webkit:1.14.0")
     implementation("androidx.appcompat:appcompat:1.7.1")
