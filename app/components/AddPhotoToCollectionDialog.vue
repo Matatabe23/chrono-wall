@@ -21,10 +21,6 @@
 
 		<!-- Шаг 2: Обрезка изображения -->
 		<div v-if="step === 2 && imageUrl && screenSize" class="flex flex-col gap-4">
-			<div class="text-body-1">
-				Размер экрана: {{ screenSize.width }} × {{ screenSize.height }} px
-			</div>
-
 			<div class="cropper-container" style="max-height: 60vh; overflow: auto">
 				<VuePictureCropper
 					ref="cropperRef"
