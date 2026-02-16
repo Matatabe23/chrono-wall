@@ -136,13 +136,7 @@
 
 <script setup lang="ts">
 	import { ref, onMounted } from 'vue';
-	import {
-		createCollection as createCollectionApi,
-		listCollections,
-		listCollectionFiles,
-		readAppFile,
-		deleteCollection
-	} from '~/helpers/tauri/file';
+	import { createCollection as createCollectionApi, listCollections, readAppFile, deleteCollection } from '~/helpers/tauri/file';
 	import { useRouter } from 'vue-router';
 	import UniversalModel from '~/components/UniversalModel.vue';
 
@@ -159,22 +153,41 @@
 
 	async function loadCollections() {
 		try {
-			collections.value = await listCollections();
-			covers.value = {};
+			collections.value = await listCollections()
+			covers.value = {}
 			for (const c of collections.value) {
 				try {
-					const files = await listCollectionFiles(c.id);
-					const first = files.find((f) => !f.startsWith('collections/' + c.id + '/_'));
-					if (first) {
-						const bytes = await readAppFile(first);
-						const blob = new Blob([bytes], { type: 'image/jpeg' });
-						const url = URL.createObjectURL(blob);
-						covers.value[c.id] = url;
-					} else {
-						covers.value[c.id] = null;
-					}
+					const metaBytes = await readAppFile(`collections/${c.id}/_meta.json`)
+					const metaText = new TextDecoder().decode(metaBytes)
+					const meta = JSON.parse(metaText) as { items?: Array<{ order: number; file: string; screen: { width: number; height: number }, crop: { x: number; y: number; width: number; height: number } }> }
+					const items = Array.isArray(meta.items) ? [...meta.items] : []
+					items.sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
+					const first = items[0]
+					if (!first) { covers.value[c.id] = null; continue }
+					const imgBytes = await readAppFile(`collections/${c.id}/${first.file}`)
+					const fullBlob = new Blob([imgBytes], { type: 'image/jpeg' })
+					const fullUrl = URL.createObjectURL(fullBlob)
+					const canvas = document.createElement('canvas')
+					canvas.width = first.screen.width
+					canvas.height = first.screen.height
+					const imgEl = await new Promise<HTMLImageElement>((resolve, reject) => {
+						const im = new Image()
+						im.onload = () => resolve(im)
+						im.onerror = reject
+						im.src = fullUrl
+					})
+					const ctx = canvas.getContext('2d')!
+					ctx.drawImage(
+						imgEl,
+						first.crop.x, first.crop.y, first.crop.width, first.crop.height,
+						0, 0, canvas.width, canvas.height
+					)
+					const blobOut: Blob = await new Promise((resolve) =>
+						canvas.toBlob((b) => resolve(b as Blob), 'image/jpeg', 0.92)
+					)
+					covers.value[c.id] = URL.createObjectURL(blobOut)
 				} catch {
-					covers.value[c.id] = null;
+					covers.value[c.id] = null
 				}
 			}
 		} catch (e: any) {

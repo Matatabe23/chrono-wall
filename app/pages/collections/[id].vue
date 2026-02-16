@@ -95,12 +95,7 @@
 <script setup lang="ts">
 	import { onMounted, ref, onBeforeUnmount } from 'vue';
 	import { useRoute, useRouter } from 'vue-router';
-	import {
-		listCollectionFiles,
-		readAppFile,
-		listCollections,
-		deleteAppFile
-	} from '~/helpers/tauri/file';
+	import { readAppFile, listCollections, deleteAppFile, saveFileToCollection } from '~/helpers/tauri/file';
 	import AddPhotoToCollectionDialog from '~/components/AddPhotoToCollectionDialog.vue';
 	import UniversalModel from '~/components/UniversalModel.vue';
 
@@ -133,17 +128,54 @@
 		for (const img of images.value) {
 			URL.revokeObjectURL(img.url);
 		}
-		const files = await listCollectionFiles(id);
 		const imgs: Array<{ path: string; url: string; width?: number; height?: number }> = [];
-		for (const path of files) {
-			try {
-				const bytes = await readAppFile(path);
-				const blob = new Blob([bytes], { type: 'image/jpeg' });
-				const url = URL.createObjectURL(blob);
-				const dims = await getImageSize(url);
-				imgs.push({ path, url, width: dims?.width, height: dims?.height });
-			} catch {}
-		}
+		try {
+			const metaBytes = await readAppFile(`collections/${id}/_meta.json`);
+			const metaText = new TextDecoder().decode(metaBytes);
+			const meta = JSON.parse(metaText) as {
+				items?: Array<{
+					order: number;
+					file: string;
+					screen: { width: number; height: number };
+					crop: { x: number; y: number; width: number; height: number };
+				}>;
+			};
+			const items = Array.isArray(meta.items) ? [...meta.items] : [];
+			items.sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+			for (const it of items) {
+				try {
+					const bytes = await readAppFile(`collections/${id}/${it.file}`);
+					const blob = new Blob([bytes], { type: 'image/jpeg' });
+					const fullUrl = URL.createObjectURL(blob);
+					const canvas = document.createElement('canvas');
+					canvas.width = it.screen.width;
+					canvas.height = it.screen.height;
+					const imgEl = await loadImage(fullUrl);
+					const ctx = canvas.getContext('2d')!;
+					ctx.drawImage(
+						imgEl,
+						it.crop.x,
+						it.crop.y,
+						it.crop.width,
+						it.crop.height,
+						0,
+						0,
+						canvas.width,
+						canvas.height
+					);
+					const blobOut: Blob = await new Promise((resolve) =>
+						canvas.toBlob((b) => resolve(b as Blob), 'image/jpeg', 0.92)
+					);
+					const previewUrl = URL.createObjectURL(blobOut);
+					imgs.push({
+						path: `collections/${id}/${it.file}`,
+						url: previewUrl,
+						width: canvas.width,
+						height: canvas.height
+					});
+				} catch {}
+			}
+		} catch {}
 		images.value = imgs;
 	}
 
@@ -153,6 +185,15 @@
 			img.onload = () => resolve({ width: img.naturalWidth, height: img.naturalHeight });
 			img.onerror = () => resolve(null);
 			img.src = url;
+		});
+	}
+
+	function loadImage(url: string): Promise<HTMLImageElement> {
+		return new Promise((resolve, reject) => {
+			const im = new Image();
+			im.onload = () => resolve(im);
+			im.onerror = reject;
+			im.src = url;
 		});
 	}
 
@@ -177,8 +218,21 @@
 			isDeleting.value = true;
 			await deleteAppFile(deleteTarget.value.path);
 			URL.revokeObjectURL(deleteTarget.value.url);
-			const idx = images.value.findIndex((i) => i.path === deleteTarget.value!.path);
-			if (idx !== -1) images.value.splice(idx, 1);
+			let meta: any = null;
+			try {
+				const bytes = await readAppFile(`collections/${id}/_meta.json`);
+				meta = JSON.parse(new TextDecoder().decode(bytes));
+			} catch {
+				meta = { items: [] };
+			}
+			if (!Array.isArray(meta.items)) meta.items = [];
+			meta.items = meta.items.filter((it: any) => `collections/${id}/${it.file}` !== deleteTarget.value!.path);
+			meta.items.forEach((it: any, idx: number) => {
+				it.order = idx + 1;
+			});
+			const enc = new TextEncoder();
+			await saveFileToCollection(id, `_meta.json`, { contents: enc.encode(JSON.stringify(meta)) });
+			await loadImages();
 			closeDeleteImage();
 		} catch (e) {
 			console.error('Failed to delete image:', e);
