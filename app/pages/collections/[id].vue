@@ -66,12 +66,29 @@
 
 		<div
 			v-if="totalPages > 1"
-			class="mt-3 flex justify-center w-full"
+			class="mt-3 flex items-center justify-between gap-4"
 		>
-			<v-pagination
-				v-model="currentPage"
-				:length="totalPages"
-			/>
+			<div class="text-medium-emphasis">
+				Страница {{ currentPage }} из {{ totalPages }} · {{ totalItems }} фото
+			</div>
+			<div class="flex items-center gap-2">
+				<v-btn
+					icon
+					variant="text"
+					@click="prevPage"
+					:disabled="currentPage <= 1"
+				>
+					<v-icon>mdi-chevron-left</v-icon>
+				</v-btn>
+				<v-btn
+					icon
+					variant="text"
+					@click="nextPage"
+					:disabled="currentPage >= totalPages"
+				>
+					<v-icon>mdi-chevron-right</v-icon>
+				</v-btn>
+			</div>
 		</div>
 	</v-container>
 	<AddPhotoToCollectionDialog
@@ -127,6 +144,14 @@
 	const currentPage = ref(1);
 	const totalItems = ref(0);
 	const totalPages = computed(() => Math.max(1, Math.ceil(totalItems.value / pageSize)));
+
+	function prevPage() {
+		if (currentPage.value > 1) currentPage.value -= 1;
+	}
+
+	function nextPage() {
+		if (currentPage.value < totalPages.value) currentPage.value += 1;
+	}
 
 	function goBack() {
 		router.back();
