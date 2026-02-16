@@ -3,8 +3,8 @@
 		<div class="flex flex-col gap-6">
 			<div class="flex items-center justify-between">
 				<div class="text-h5">Коллекции обоев</div>
-				<v-btn 
-					color="primary" 
+				<v-btn
+					color="primary"
 					@click="showCreateDialog = true"
 					prepend-icon="mdi-plus"
 				>
@@ -44,13 +44,13 @@
 						label="Название коллекции"
 						:rules="[v => !!v || 'Название обязательно', v => !collections.some(c => c.name === v) || 'Коллекция с таким названием уже существует']"
 						autofocus
-						@keyup.enter="createCollection"
+						@keyup.enter="onCreateCollection"
 					/>
 				</v-card-text>
 				<v-card-actions>
 					<v-spacer />
 					<v-btn text @click="showCreateDialog = false">Отмена</v-btn>
-					<v-btn color="primary" @click="createCollection" :loading="isCreating">Создать</v-btn>
+					<v-btn color="primary" @click="onCreateCollection" :loading="isCreating">Создать</v-btn>
 				</v-card-actions>
 			</v-card>
 		</v-dialog>
@@ -66,7 +66,7 @@
 
 <script setup lang="ts">
 	import { ref, onMounted } from 'vue'
-	import { createCollection, listCollections } from '~/helpers/tauri/file'
+	import { createCollection as createCollectionApi, listCollections } from '~/helpers/tauri/file'
 	import AddPhotoToCollectionDialog from '~/components/AddPhotoToCollectionDialog.vue'
 
 	const collections = ref<Array<{ id: string; name: string; created_at: number }>>([])
@@ -84,7 +84,7 @@
 		}
 	}
 
-	async function createCollection() {
+	async function onCreateCollection() {
 		if (!newCollectionName.value.trim()) {
 			return
 		}
@@ -96,7 +96,7 @@
 
 		try {
 			isCreating.value = true
-			await createCollection(newCollectionName.value.trim())
+			await createCollectionApi(newCollectionName.value.trim())
 			newCollectionName.value = ''
 			showCreateDialog.value = false
 			await loadCollections()
