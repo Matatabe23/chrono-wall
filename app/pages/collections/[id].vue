@@ -1,5 +1,5 @@
 <template>
-	<v-container class="py-6">
+	<v-container class="py-6 pb-16">
 		<div class="flex items-center justify-between mb-4">
 			<div class="text-h5">{{ title }}</div>
 			<div class="flex gap-2">
@@ -15,7 +15,7 @@
 		<v-btn
 			color="primary"
 			prepend-icon="mdi-image-plus"
-            class="mb-4 w-full"
+			class="mb-4 w-full"
 			@click="showAddDialog = true"
 		>
 			Добавить фото
@@ -63,6 +63,16 @@
 				<div>Добавьте фото в эту коллекцию</div>
 			</div>
 		</div>
+
+		<div
+			v-if="totalPages > 1"
+			class="mt-3 flex justify-center w-full"
+		>
+			<v-pagination
+				v-model="currentPage"
+				:length="totalPages"
+			/>
+		</div>
 	</v-container>
 	<AddPhotoToCollectionDialog
 		v-model="showAddDialog"
@@ -93,9 +103,14 @@
 </template>
 
 <script setup lang="ts">
-	import { onMounted, ref, onBeforeUnmount } from 'vue';
+	import { onMounted, ref, onBeforeUnmount, computed, watch } from 'vue';
 	import { useRoute, useRouter } from 'vue-router';
-	import { readAppFile, listCollections, deleteAppFile, saveFileToCollection } from '~/helpers/tauri/file';
+	import {
+		readAppFile,
+		listCollections,
+		deleteAppFile,
+		saveFileToCollection
+	} from '~/helpers/tauri/file';
 	import AddPhotoToCollectionDialog from '~/components/AddPhotoToCollectionDialog.vue';
 	import UniversalModel from '~/components/UniversalModel.vue';
 
@@ -108,6 +123,10 @@
 	const showDeleteImageDialog = ref(false);
 	const deleteTarget = ref<{ path: string; url: string } | null>(null);
 	const isDeleting = ref(false);
+	const pageSize = 6;
+	const currentPage = ref(1);
+	const totalItems = ref(0);
+	const totalPages = computed(() => Math.max(1, Math.ceil(totalItems.value / pageSize)));
 
 	function goBack() {
 		router.back();
@@ -135,14 +154,18 @@
 			const meta = JSON.parse(metaText) as {
 				items?: Array<{
 					order: number;
+					created_at?: number;
 					file: string;
 					screen: { width: number; height: number };
 					crop: { x: number; y: number; width: number; height: number };
 				}>;
 			};
 			const items = Array.isArray(meta.items) ? [...meta.items] : [];
-			items.sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
-			for (const it of items) {
+			items.sort((a, b) => (b.created_at ?? b.order ?? 0) - (a.created_at ?? a.order ?? 0));
+			totalItems.value = items.length;
+			const start = (currentPage.value - 1) * pageSize;
+			const pageItems = items.slice(start, start + pageSize);
+			for (const it of pageItems) {
 				try {
 					const bytes = await readAppFile(`collections/${id}/${it.file}`);
 					const blob = new Blob([bytes], { type: 'image/jpeg' });
@@ -199,6 +222,7 @@
 
 	async function onPhotoAdded() {
 		showAddDialog.value = false;
+		currentPage.value = 1;
 		await loadImages();
 	}
 
@@ -226,12 +250,16 @@
 				meta = { items: [] };
 			}
 			if (!Array.isArray(meta.items)) meta.items = [];
-			meta.items = meta.items.filter((it: any) => `collections/${id}/${it.file}` !== deleteTarget.value!.path);
+			meta.items = meta.items.filter(
+				(it: any) => `collections/${id}/${it.file}` !== deleteTarget.value!.path
+			);
 			meta.items.forEach((it: any, idx: number) => {
 				it.order = idx + 1;
 			});
 			const enc = new TextEncoder();
-			await saveFileToCollection(id, `_meta.json`, { contents: enc.encode(JSON.stringify(meta)) });
+			await saveFileToCollection(id, `_meta.json`, {
+				contents: enc.encode(JSON.stringify(meta))
+			});
 			await loadImages();
 			closeDeleteImage();
 		} catch (e) {
@@ -243,6 +271,10 @@
 
 	onMounted(async () => {
 		await loadTitle();
+		await loadImages();
+	});
+	watch(currentPage, async () => {
+		if (currentPage.value > totalPages.value) currentPage.value = totalPages.value;
 		await loadImages();
 	});
 
