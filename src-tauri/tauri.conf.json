@@ -2,7 +2,7 @@
 	"$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
 	"productName": "Chrono Wall",
 	"version": "0.1.8",
-	"identifier": "ru.qugor.chronowall.app",
+	"identifier": "ru.qugor.chronowall",
 	"build": {
 		"frontendDist": "../.output/public",
 		"devUrl": "http://localhost:3000",

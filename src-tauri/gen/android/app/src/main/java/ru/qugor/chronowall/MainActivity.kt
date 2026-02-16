@@ -1,4 +1,4 @@
-package ru.qugor.chronowall.app
+package ru.qugor.chronowall
 
 import android.os.Bundle
 import androidx.activity.enableEdgeToEdge
