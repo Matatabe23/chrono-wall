@@ -124,3 +124,25 @@ export async function pickAndSaveFile(): Promise<string | null> {
 	}
 	return invoke<string>('save_file_to_app', payload);
 }
+
+/**
+ * Создать новую коллекцию. Возвращает уникальный ID коллекции.
+ */
+export async function createCollection(name: string): Promise<string> {
+	return invoke<string>('create_collection', { name });
+}
+
+/**
+ * Получить список всех коллекций.
+ */
+export async function listCollections(): Promise<Array<{ id: string; name: string; created_at: number }>> {
+	return invoke<Array<{ id: string; name: string; created_at: number }>>('list_collections');
+}
+
+/**
+ * Получить размер экрана устройства (Android).
+ */
+export async function getScreenSize(): Promise<{ width: number; height: number }> {
+	const [width, height] = await invoke<[number, number]>('get_screen_size');
+	return { width, height };
+}

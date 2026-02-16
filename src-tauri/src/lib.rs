@@ -275,6 +275,179 @@ fn delete_app_file(app: tauri::AppHandle, path: String) -> Result<(), String> {
   Ok(())
 }
 
+/// Получить размер экрана Android
+#[cfg(target_os = "android")]
+fn get_screen_size_android() -> Result<(i32, i32), String> {
+  let ctx = android_context();
+  let vm = unsafe {
+    jni::JavaVM::from_raw(ctx.vm() as *mut _).map_err(|e| format!("JavaVM error: {}", e))?
+  };
+  let mut env = vm
+    .attach_current_thread()
+    .map_err(|e| format!("JNI attach thread: {}", e))?;
+  let context = unsafe { JObject::from_raw(ctx.context() as *mut _) };
+
+  // DisplayMetrics metrics = context.getResources().getDisplayMetrics()
+  let resources_class = env
+    .find_class("android/content/Context")
+    .map_err(|e| format!("Find Context: {}", e))?;
+  let resources = env
+    .call_method(
+      context,
+      "getResources",
+      "()Landroid/content/res/Resources;",
+      &[],
+    )
+    .map_err(|e| format!("getResources: {}", e))?
+    .l()
+    .map_err(|e| format!("Get Resources object: {}", e))?;
+
+  let display_metrics_class = env
+    .find_class("android/util/DisplayMetrics")
+    .map_err(|e| format!("Find DisplayMetrics: {}", e))?;
+  let metrics = env
+    .new_object(display_metrics_class, "()V", &[])
+    .map_err(|e| format!("New DisplayMetrics: {}", e))?;
+
+  env
+    .call_method(
+      resources,
+      "getDisplayMetrics",
+      "(Landroid/util/DisplayMetrics;)V",
+      &[jni::objects::JValue::Object(&metrics)],
+    )
+    .map_err(|e| format!("getDisplayMetrics: {}", e))?;
+
+  // int width = metrics.widthPixels
+  let width = env
+    .get_field(&metrics, "widthPixels", "I")
+    .map_err(|e| format!("get widthPixels: {}", e))?
+    .i()
+    .map_err(|e| format!("Get width: {}", e))?;
+
+  // int height = metrics.heightPixels
+  let height = env
+    .get_field(&metrics, "heightPixels", "I")
+    .map_err(|e| format!("get heightPixels: {}", e))?
+    .i()
+    .map_err(|e| format!("Get height: {}", e))?;
+
+  Ok((width, height))
+}
+
+#[tauri::command]
+fn get_screen_size() -> Result<(i32, i32), String> {
+  #[cfg(target_os = "android")]
+  {
+    return get_screen_size_android();
+  }
+  #[cfg(not(target_os = "android"))]
+  {
+    Err("Only supported on Android".to_string())
+  }
+}
+
+/// Создать коллекцию. Возвращает уникальный ID коллекции.
+#[tauri::command]
+fn create_collection(app: tauri::AppHandle, name: String) -> Result<String, String> {
+  let collections_dir = files_base_dir(&app)?.join("collections");
+  fs::create_dir_all(&collections_dir).map_err(|e| e.to_string())?;
+
+  // Проверяем уникальность названия
+  let existing = list_collections(app.clone())?;
+  if existing.iter().any(|c| c["name"].as_str() == Some(&name)) {
+    return Err(format!("Коллекция с названием '{}' уже существует", name));
+  }
+
+  // Генерируем уникальный ID на основе имени и времени
+  let sanitized_name = name
+    .chars()
+    .map(|c| if c.is_alphanumeric() || c == '-' || c == '_' { c } else { '_' })
+    .collect::<String>();
+  let timestamp = std::time::SystemTime::now()
+    .duration_since(std::time::UNIX_EPOCH)
+    .unwrap()
+    .as_secs();
+  let collection_id = format!("{}_{}", sanitized_name, timestamp);
+
+  // Проверяем уникальность ID папки
+  let mut final_id = collection_id.clone();
+  let mut counter = 0;
+  while collection_dir(&app, &final_id)?.exists() {
+    counter += 1;
+    final_id = format!("{}_{}", collection_id, counter);
+  }
+
+  // Создаем папку коллекции
+  let dir = collection_dir(&app, &final_id)?;
+  fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+
+  // Сохраняем метаданные (название) в файл
+  let meta_file = dir.join("_meta.json");
+  let meta = serde_json::json!({
+    "name": name,
+    "id": final_id,
+    "created_at": timestamp
+  });
+  fs::write(&meta_file, serde_json::to_string_pretty(&meta).unwrap())
+    .map_err(|e| e.to_string())?;
+
+  Ok(final_id)
+}
+
+/// Получить список всех коллекций
+#[tauri::command]
+fn list_collections(app: tauri::AppHandle) -> Result<Vec<serde_json::Value>, String> {
+  let collections_dir = files_base_dir(&app)?.join("collections");
+  
+  if !collections_dir.exists() {
+    return Ok(vec![]);
+  }
+
+  let mut collections = Vec::new();
+  let entries = fs::read_dir(&collections_dir).map_err(|e| e.to_string())?;
+
+  for entry in entries {
+    let entry = entry.map_err(|e| e.to_string())?;
+    let path = entry.path();
+    
+    if path.is_dir() {
+      let collection_id = path
+        .file_name()
+        .and_then(|n| n.to_str())
+        .map(String::from)
+        .unwrap_or_default();
+
+      // Читаем метаданные
+      let meta_file = path.join("_meta.json");
+      if meta_file.exists() {
+        if let Ok(content) = fs::read_to_string(&meta_file) {
+          if let Ok(meta) = serde_json::from_str::<serde_json::Value>(&content) {
+            collections.push(meta);
+            continue;
+          }
+        }
+      }
+
+      // Если метаданных нет, создаем базовую структуру
+      collections.push(serde_json::json!({
+        "id": collection_id,
+        "name": collection_id,
+        "created_at": 0
+      }));
+    }
+  }
+
+  // Сортируем по дате создания (новые сначала)
+  collections.sort_by(|a, b| {
+    let a_time = a["created_at"].as_u64().unwrap_or(0);
+    let b_time = b["created_at"].as_u64().unwrap_or(0);
+    b_time.cmp(&a_time)
+  });
+
+  Ok(collections)
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
   tauri::Builder::default()
@@ -289,6 +462,9 @@ pub fn run() {
     read_file_from_app,
     delete_app_file,
     set_device_wallpaper,
+    create_collection,
+    list_collections,
+    get_screen_size,
   ])
     .setup(|app| {
       if cfg!(debug_assertions) {
