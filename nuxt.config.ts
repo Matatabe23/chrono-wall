@@ -12,11 +12,6 @@ export default defineNuxtConfig({
     nitro: {
         preset: "static",
     },
-    runtimeConfig: {
-        public: {
-            API_BASE_URL: process.env.NUXT_PUBLIC_API_BASE_URL
-        }
-    },
     css: [
         '~/assets/css/tailwind.css',
         'vuetify/lib/styles/main.sass',
