@@ -1,80 +1,79 @@
 <template>
-	<v-dialog :model-value="modelValue" @update:model-value="$emit('update:modelValue', $event)" max-width="90vw" scrollable>
-		<v-card v-if="collection">
-			<v-card-title>Добавить фото в коллекцию "{{ collection.name }}"</v-card-title>
-			
-			<v-card-text>
-				<!-- Шаг 1: Выбор изображения -->
-				<div v-if="step === 1" class="flex flex-col gap-4">
-					<v-btn 
-						color="primary" 
-						@click="pickImage" 
-						:loading="isPicking"
-						prepend-icon="mdi-image"
-						block
-					>
-						Выбрать изображение
-					</v-btn>
+	<UniversalModel v-model:isOpen="isOpen" maxWidth="90vw" :minHeight="'auto'">
+		<template #top>
+			Добавить фото в коллекцию "{{ collection?.name }}"
+		</template>
 
-					<div v-if="error" class="text-error">{{ error }}</div>
-				</div>
+		<!-- Шаг 1: Выбор изображения -->
+		<div v-if="step === 1" class="flex flex-col gap-4">
+			<v-btn
+				color="primary"
+				@click="pickImage"
+				:loading="isPicking"
+				prepend-icon="mdi-image"
+				block
+			>
+				Выбрать изображение
+			</v-btn>
 
-				<!-- Шаг 2: Обрезка изображения -->
-				<div v-if="step === 2 && imageUrl && screenSize" class="flex flex-col gap-4">
-					<div class="text-body-1">
-						Размер экрана: {{ screenSize.width }} × {{ screenSize.height }} px
-					</div>
-					
-					<div class="cropper-container" style="max-height: 60vh; overflow: auto">
-						<VuePictureCropper
-							ref="cropperRef"
-							:boxStyle="{
-								width: '100%',
-								height: 'auto',
-								backgroundColor: '#f8f9fa',
-							}"
-							:img="imageUrl"
-							:options="{
-								viewMode: 1,
-								dragMode: 'move',
-								aspectRatio: screenSize.width / screenSize.height,
-								autoCropArea: 0.8,
-								restore: false,
-								guides: true,
-								center: true,
-								highlight: false,
-								cropBoxMovable: true,
-								cropBoxResizable: true,
-								toggleDragModeOnDblclick: false,
-							}"
-							@ready="onCropperReady"
-						/>
-					</div>
+			<div v-if="error" class="text-error">{{ error }}</div>
+		</div>
 
-					<div class="flex gap-2">
-						<v-btn text @click="step = 1">Назад</v-btn>
-						<v-spacer />
-						<v-btn color="primary" @click="cropAndSave" :loading="isSaving">
-							Сохранить
-						</v-btn>
-					</div>
-				</div>
-			</v-card-text>
+		<!-- Шаг 2: Обрезка изображения -->
+		<div v-if="step === 2 && imageUrl && screenSize" class="flex flex-col gap-4">
+			<div class="text-body-1">
+				Размер экрана: {{ screenSize.width }} × {{ screenSize.height }} px
+			</div>
 
-			<v-card-actions>
+			<div class="cropper-container" style="max-height: 60vh; overflow: auto">
+				<VuePictureCropper
+					ref="cropperRef"
+					:boxStyle="{
+						width: '100%',
+						height: 'auto',
+						backgroundColor: '#f8f9fa',
+					}"
+					:img="imageUrl"
+					:options="{
+						viewMode: 1,
+						dragMode: 'move',
+						aspectRatio: screenSize.width / screenSize.height,
+						autoCropArea: 0.8,
+						restore: false,
+						guides: true,
+						center: true,
+						highlight: false,
+						cropBoxMovable: true,
+						cropBoxResizable: true,
+						toggleDragModeOnDblclick: false,
+					}"
+					@ready="onCropperReady"
+				/>
+			</div>
+
+			<div class="flex gap-2">
+				<v-btn text @click="step = 1">Назад</v-btn>
 				<v-spacer />
-				<v-btn text @click="close">Закрыть</v-btn>
-			</v-card-actions>
-		</v-card>
-	</v-dialog>
+				<v-btn color="primary" @click="cropAndSave" :loading="isSaving">
+					Сохранить
+				</v-btn>
+			</div>
+		</div>
+
+		<template #bottom>
+			<v-spacer />
+			<v-btn text @click="close">Закрыть</v-btn>
+		</template>
+	</UniversalModel>
 </template>
 
 <script setup lang="ts">
-	import { ref, watch, nextTick } from 'vue'
+	import { ref, watch, nextTick, computed } from 'vue'
 	import VuePictureCropper, { cropper } from 'vue-picture-cropper'
 	import 'cropperjs/dist/cropper.css'
 	import { getDeviceInfo } from '~/helpers/tauri'
 	import { getScreenSize, saveFileToCollection } from '~/helpers/tauri/file'
+	import UniversalModel from '~/components/UniversalModel.vue'
 
 	const props = defineProps<{
 		modelValue: boolean
@@ -94,6 +93,10 @@
 	const isSaving = ref(false)
 	const error = ref<string | null>(null)
 	const cropperRef = ref<any>(null)
+	const isOpen = computed({
+		get: () => props.modelValue,
+		set: (v: boolean) => emit('update:modelValue', v)
+	})
 
 	watch(() => props.modelValue, async (newVal) => {
 		if (newVal && props.collection) {
@@ -101,7 +104,7 @@
 			imageUrl.value = ''
 			imageFile.value = null
 			error.value = null
-			
+
 			// Получаем размер экрана
 			try {
 				const { platform } = await getDeviceInfo()
@@ -125,16 +128,10 @@
 
 	async function pickImage() {
 		error.value = null
-		
-		const { platform } = await getDeviceInfo()
-		if (platform !== 'android') {
-			error.value = 'Работает только на Android'
-			return
-		}
 
 		try {
 			isPicking.value = true
-			
+
 			const { open } = await import('@tauri-apps/plugin-dialog')
 			const selected = await open({
 				multiple: false,
@@ -150,7 +147,7 @@
 			}
 
 			const path = selected as string
-			
+
 			// Читаем файл для предпросмотра
 			const { readFile } = await import('@tauri-apps/plugin-fs')
 			const data = await readFile(path)
@@ -166,13 +163,13 @@
 				bmp: 'image/bmp'
 			}
 			const mimeType = mimeTypes[ext] || 'image/jpeg'
-			
+
 			const blob = new Blob([bytes], { type: mimeType })
 			imageUrl.value = URL.createObjectURL(blob)
-			
+
 			// Сохраняем путь для дальнейшего использования
 			imageFile.value = new File([blob], 'image.jpg')
-			
+
 			// Ждем следующего тика для инициализации cropper
 			await nextTick()
 			step.value = 2
@@ -227,7 +224,7 @@
 			imageUrl.value = ''
 			imageFile.value = null
 			step.value = 1
-			
+
 			emit('photo-added')
 			close()
 		} catch (e: any) {

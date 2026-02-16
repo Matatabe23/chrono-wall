@@ -2,10 +2,15 @@
 	<v-container class="py-6">
 		<div class="flex items-center justify-between mb-4">
 			<div class="text-h5">{{ title }}</div>
-			<v-btn variant="text" @click="goBack">
+			<div class="flex gap-2">
+				<v-btn color="primary" prepend-icon="mdi-image-plus" @click="showAddDialog = true">
+					Добавить фото
+				</v-btn>
+				<v-btn variant="text" @click="goBack">
 				<v-icon class="mr-2">mdi-arrow-left</v-icon>
 				Назад
-			</v-btn>
+				</v-btn>
+			</div>
 		</div>
 		<div v-if="images.length > 0" class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
 			<v-img
@@ -24,18 +29,25 @@
 			</div>
 		</div>
 	</v-container>
-</template>
+		<AddPhotoToCollectionDialog
+			v-model="showAddDialog"
+			:collection="{ id, name: title }"
+			@photo-added="onPhotoAdded"
+		/>
+	</template>
 
 <script setup lang="ts">
 import { onMounted, ref, onBeforeUnmount } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { listCollectionFiles, readAppFile, listCollections } from '~/helpers/tauri/file'
+import AddPhotoToCollectionDialog from '~/components/AddPhotoToCollectionDialog.vue'
 
 const route = useRoute()
 const router = useRouter()
 const id = route.params.id as string
 const images = ref<Array<{ path: string; url: string }>>([])
 const title = ref('Коллекция')
+const showAddDialog = ref(false)
 
 function goBack() {
 	router.back()
@@ -52,6 +64,10 @@ async function loadTitle() {
 }
 
 async function loadImages() {
+	// очистка старых URL перед обновлением
+	for (const img of images.value) {
+		URL.revokeObjectURL(img.url)
+	}
 	const files = await listCollectionFiles(id)
 	const imgs: Array<{ path: string; url: string }> = []
 	for (const path of files) {
@@ -63,6 +79,11 @@ async function loadImages() {
 		} catch {}
 	}
 	images.value = imgs
+}
+
+async function onPhotoAdded() {
+	showAddDialog.value = false
+	await loadImages()
 }
 
 onMounted(async () => {

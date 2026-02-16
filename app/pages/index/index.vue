@@ -45,41 +45,32 @@
 			</div>
 		</div>
 
-		<!-- Диалог создания коллекции -->
-		<v-dialog v-model="showCreateDialog" max-width="500">
-			<v-card>
-				<v-card-title>Создать коллекцию</v-card-title>
-				<v-card-text>
-					<v-text-field
-						v-model="newCollectionName"
-						label="Название коллекции"
-						:rules="[v => !!v || 'Название обязательно', v => !collections.some(c => c.name === v) || 'Коллекция с таким названием уже существует']"
-						autofocus
-						@keyup.enter="onCreateCollection"
-					/>
-				</v-card-text>
-				<v-card-actions>
-					<v-spacer />
-					<v-btn text @click="showCreateDialog = false">Отмена</v-btn>
-					<v-btn color="primary" @click="onCreateCollection" :loading="isCreating">Создать</v-btn>
-				</v-card-actions>
-			</v-card>
-		</v-dialog>
+		<UniversalModel v-model:isOpen="showCreateDialog" maxWidth="500px">
+			<template #top>Создать коллекцию</template>
+			<v-text-field
+				v-model="newCollectionName"
+				label="Название коллекции"
+				:rules="[v => !!v || 'Название обязательно', v => !collections.some(c => c.name === v) || 'Коллекция с таким названием уже существует']"
+				autofocus
+				@keyup.enter="onCreateCollection"
+			/>
+			<template #bottom>
+				<v-spacer />
+				<v-btn text @click="showCreateDialog = false">Отмена</v-btn>
+				<v-btn color="primary" @click="onCreateCollection" :loading="isCreating">Создать</v-btn>
+			</template>
+		</UniversalModel>
 
-		<v-dialog v-model="showDeleteDialog" max-width="480">
-			<v-card>
-				<v-card-title>Удаление коллекции</v-card-title>
-				<v-card-text>
-					<div class="mb-3">Вы уверены, что хотите удалить коллекцию «{{ deleteTarget?.name }}»?</div>
-					<v-checkbox v-model="deleteConfirmed" label="Файлы тоже удалить" />
-				</v-card-text>
-				<v-card-actions>
-					<v-spacer />
-					<v-btn text @click="closeDeleteDialog">Отмена</v-btn>
-					<v-btn color="error" :disabled="!deleteConfirmed" :loading="isDeleting" @click="doDelete">Удалить</v-btn>
-				</v-card-actions>
-			</v-card>
-		</v-dialog>
+		<UniversalModel v-model:isOpen="showDeleteDialog" maxWidth="480px">
+			<template #top>Удаление коллекции</template>
+			<div class="mb-3">Вы уверены, что хотите удалить коллекцию «{{ deleteTarget?.name }}»?</div>
+			<v-checkbox v-model="deleteConfirmed" label="Файлы тоже удалить" />
+			<template #bottom>
+				<v-spacer />
+				<v-btn text @click="closeDeleteDialog">Отмена</v-btn>
+				<v-btn color="error" :disabled="!deleteConfirmed" :loading="isDeleting" @click="doDelete">Удалить</v-btn>
+			</template>
+		</UniversalModel>
 	</v-container>
 </template>
 
@@ -87,6 +78,7 @@
 	import { ref, onMounted } from 'vue'
 	import { createCollection as createCollectionApi, listCollections, listCollectionFiles, readAppFile, deleteCollection } from '~/helpers/tauri/file'
 	import { useRouter } from 'vue-router'
+	import UniversalModel from '~/components/UniversalModel.vue'
 
 	const collections = ref<Array<{ id: string; name: string; created_at: number }>>([])
 	const showCreateDialog = ref(false)
