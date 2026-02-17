@@ -20,13 +20,13 @@
 		</div>
 
 		<!-- Шаг 2: Обрезка изображения -->
-		<div v-if="step === 2 && imageUrl && screenSize" class="flex flex-col gap-4">
-			<div class="cropper-container" style="max-height: 60vh; overflow: auto">
+		<div v-if="step === 2 && imageUrl && screenSize" class="flex flex-col gap-4 h-[70vh] max-h-[70vh] overflow-hidden">
+			<div class="cropper-container">
 				<VuePictureCropper
 					ref="cropperRef"
 					:boxStyle="{
 						width: '100%',
-						height: 'auto',
+						height: '100%',
 						backgroundColor: '#f8f9fa',
 					}"
 					:img="imageUrl"
@@ -34,7 +34,7 @@
 						viewMode: 1,
 						dragMode: 'move',
 						aspectRatio: screenSize.width / screenSize.height,
-						autoCropArea: 0.8,
+						autoCropArea: 0.9,
 						restore: false,
 						guides: true,
 						center: true,
@@ -42,6 +42,8 @@
 						cropBoxMovable: true,
 						cropBoxResizable: true,
 						toggleDragModeOnDblclick: false,
+						background: false,
+						responsive: true
 					}"
 					@ready="onCropperReady"
 				/>
@@ -120,8 +122,25 @@
 	})
 
 	function onCropperReady() {
-		// Cropper готов к использованию
-		console.log('Cropper ready')
+		try {
+			if (!screenSize.value) return
+			// Сброс до состояния "вписать изображение целиком в контейнер"
+			cropper.reset()
+			const ratio = screenSize.value.width / screenSize.value.height
+			const imgData = cropper.getImageData()
+			const iw = Math.round(imgData.naturalWidth)
+			const ih = Math.round(imgData.naturalHeight)
+			if (!iw || !ih) return
+			let cw = iw
+			let ch = Math.round(cw / ratio)
+			if (ch > ih) {
+				ch = ih
+				cw = Math.round(ch * ratio)
+			}
+			const x = Math.round((iw - cw) / 2)
+			const y = Math.round((ih - ch) / 2)
+			cropper.setData({ x, y, width: cw, height: ch })
+		} catch {}
 	}
 
 	async function pickImage() {
@@ -267,5 +286,8 @@
 <style scoped>
 .cropper-container {
 	position: relative;
+	flex: 1 1 auto;
+	min-height: 0;
+	overflow: hidden;
 }
 </style>
