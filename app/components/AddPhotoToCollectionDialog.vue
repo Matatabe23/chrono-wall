@@ -27,12 +27,17 @@
 					:boxStyle="{
 						width: '100%',
 						height: '100%',
-						backgroundColor: '#f8f9fa',
+						backgroundColor: 'transparent',
 					}"
 					:img="imageUrl"
 					:options="{
 						viewMode: 1,
-						dragMode: 'move',
+						dragMode: 'none',
+						movable: false,
+						zoomable: false,
+						zoomOnWheel: false,
+						zoomOnTouch: false,
+						scalable: false,
 						aspectRatio: screenSize.width / screenSize.height,
 						autoCropArea: 0.9,
 						restore: false,
