@@ -28,12 +28,41 @@
 				:show-ticks="false"
 			/>
 			<div class="mt-2 text-medium-emphasis">Текущая: {{ currentLabel }}</div>
+			<v-divider class="my-4" />
+			<div class="mt-4 mb-2 font-medium">Отображать по</div>
+			<div class="flex items-center gap-3">
+				<v-btn
+					icon
+					size="large"
+					variant="tonal"
+					:color="appStore.rotationMode === 'queue' ? 'primary' : undefined"
+					@click="appStore.rotationMode = 'queue'"
+					title="Очереди (новые → старые)"
+				>
+					<v-icon>mdi-format-list-bulleted</v-icon>
+				</v-btn>
+				<v-btn
+					icon
+					size="large"
+					variant="tonal"
+					:color="appStore.rotationMode === 'random' ? 'primary' : undefined"
+					@click="appStore.rotationMode = 'random'"
+					title="Рандомно без повторений"
+				>
+					<v-icon>mdi-shuffle-variant</v-icon>
+				</v-btn>
+			</div>
+			<div class="mt-2 text-medium-emphasis text-sm">
+				Очереди: новые → старые; Рандом: без повторений за круг
+			</div>
+			<v-divider class="my-4" />
 			<div class="mt-4 mb-2 font-medium">Куда ставить обои</div>
 			<div class="flex items-center gap-2">
 				<v-btn
 					icon
-					variant="plain"
-					:class="iconClass('both')"
+					size="large"
+					variant="tonal"
+					:color="appStore.wallpaperTarget === 'both' ? 'primary' : undefined"
 					@click="appStore.wallpaperTarget = 'both'"
 					title="Экран и блокировка"
 				>
@@ -41,8 +70,9 @@
 				</v-btn>
 				<v-btn
 					icon
-					variant="plain"
-					:class="iconClass('lock')"
+					size="large"
+					variant="tonal"
+					:color="appStore.wallpaperTarget === 'lock' ? 'primary' : undefined"
 					@click="appStore.wallpaperTarget = 'lock'"
 					title="Только блокировка"
 				>
@@ -50,14 +80,16 @@
 				</v-btn>
 				<v-btn
 					icon
-					variant="plain"
-					:class="iconClass('home')"
+					size="large"
+					variant="tonal"
+					:color="appStore.wallpaperTarget === 'home' ? 'primary' : undefined"
 					@click="appStore.wallpaperTarget = 'home'"
 					title="Только главный экран"
 				>
 					<v-icon>mdi-home</v-icon>
 				</v-btn>
 			</div>
+			<v-divider class="my-4" />
 			<template #bottom>
 				<v-spacer />
 				<v-btn text @click="settingsOpen = false">Закрыть</v-btn>

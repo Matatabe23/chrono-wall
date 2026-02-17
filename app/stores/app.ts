@@ -8,6 +8,7 @@ export const useAppStore = defineStore('app', () => {
 	const userDark = ref(false);
 	const changeIntervalMinutes = ref(60);
 	const wallpaperTarget = ref<'both' | 'lock' | 'home'>('both');
+	const rotationMode = ref<'queue' | 'random'>('queue');
 	const activeCollectionId = ref<string | null>(null);
 	const isRotating = ref(false);
 	const currentIndex = ref(0);
@@ -38,6 +39,10 @@ export const useAppStore = defineStore('app', () => {
 		if (savedTarget === 'both' || savedTarget === 'lock' || savedTarget === 'home') {
 			wallpaperTarget.value = savedTarget;
 		}
+		const savedRotation = localStorage.getItem('rotationMode');
+		if (savedRotation === 'queue' || savedRotation === 'random') {
+			rotationMode.value = savedRotation as 'queue' | 'random';
+		}
 		const savedActive = localStorage.getItem('activeCollectionId');
 		if (savedActive) activeCollectionId.value = savedActive;
 		const savedIdx = localStorage.getItem('rotationIndex');
@@ -66,6 +71,23 @@ export const useAppStore = defineStore('app', () => {
 		}
 	});
 
+	const rotationModeSetting = computed({
+		get: () => rotationMode.value,
+		set: (val: 'queue' | 'random') => {
+			rotationMode.value = val;
+			if (typeof window !== 'undefined') {
+				localStorage.setItem('rotationMode', val);
+			}
+			if (activeCollectionId.value) {
+				loadSequenceForCollection(activeCollectionId.value).then((seq) => {
+					sequence.value = seq;
+					currentIndex.value = 0;
+					persistRotation();
+				});
+			}
+		}
+	});
+
 	function persistRotation() {
 		if (typeof window === 'undefined') return;
 		if (activeCollectionId.value) {
@@ -86,25 +108,47 @@ export const useAppStore = defineStore('app', () => {
 		}
 	}
 
+	function shuffle<T>(arr: T[]): T[] {
+		const a = [...arr];
+		for (let i = a.length - 1; i > 0; i--) {
+			const j = Math.floor(Math.random() * (i + 1));
+			[a[i], a[j]] = [a[j], a[i]];
+		}
+		return a;
+	}
+
 	async function loadSequenceForCollection(id: string): Promise<string[]> {
 		try {
 			const bytes = await readAppFile(`collections/${id}/_meta.json`);
 			const text = new TextDecoder().decode(bytes);
 			const meta = JSON.parse(text);
 			if (Array.isArray(meta.items) && meta.items.length > 0) {
-				const sorted = [...meta.items].sort((a: any, b: any) => {
-					const ao = Number(a.order) || Number(a.id) || 0;
-					const bo = Number(b.order) || Number(b.id) || 0;
-					return ao - bo;
-				});
-				return sorted
+				let items = [...meta.items];
+				if (rotationMode.value === 'queue') {
+					items.sort((a: any, b: any) => {
+						const ao = Number(a.order) || Number(a.id) || 0;
+						const bo = Number(b.order) || Number(b.id) || 0;
+						return bo - ao; // новые -> старые
+					});
+				} else {
+					items.sort((a: any, b: any) => {
+						const ao = Number(a.order) || Number(a.id) || 0;
+						const bo = Number(b.order) || Number(b.id) || 0;
+						return ao - bo;
+					});
+					items = shuffle(items);
+				}
+				return items
 					.map((it: any) => it?.file)
 					.filter((f: any) => typeof f === 'string' && f.length > 0)
 					.map((f: string) => `collections/${id}/${f}`);
 			}
 		} catch {}
 		const files = await listCollectionFiles(id);
-		return files;
+		if (rotationMode.value === 'queue') {
+			return [...files].reverse(); // приблизительно новые -> старые
+		}
+		return shuffle(files);
 	}
 
 	async function applyWallpaper(path: string) {
@@ -121,7 +165,15 @@ export const useAppStore = defineStore('app', () => {
 		timer = setTimeout(async () => {
 			try {
 				if (!isRotating.value || sequence.value.length === 0) return;
-				currentIndex.value = (currentIndex.value + 1) % sequence.value.length;
+				if (
+					rotationMode.value === 'random' &&
+					currentIndex.value === sequence.value.length - 1
+				) {
+					sequence.value = shuffle(sequence.value);
+					currentIndex.value = 0;
+				} else {
+					currentIndex.value = (currentIndex.value + 1) % sequence.value.length;
+				}
 				const nextPath = sequence.value[currentIndex.value];
 				await applyWallpaper(nextPath);
 				lastChangeAt.value = Date.now();
@@ -169,6 +221,7 @@ export const useAppStore = defineStore('app', () => {
 		isDark,
 		intervalMinutes,
 		wallpaperTarget: wallpaperTargetMode,
+		rotationMode: rotationModeSetting,
 		activeCollectionId,
 		isRotating,
 		startCollection,
