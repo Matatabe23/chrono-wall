@@ -207,7 +207,7 @@
 
 			// Сохраняем исходный файл без изменений
 			const baseName = (selectedFileName.value ?? `image_${Date.now()}.jpg`)
-			if (selectedPath.value) {
+			if (selectedPath.value && !selectedPath.value.startsWith('content:')) {
 				await saveFileToCollection(props.collection.id, baseName, {
 					sourcePath: selectedPath.value
 				})
