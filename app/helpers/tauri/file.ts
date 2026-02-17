@@ -87,8 +87,8 @@ export async function deleteAppFile(path: string): Promise<void> {
 /**
  * Установить изображение как обои устройства (Android).
  */
-export async function setDeviceWallpaper(path: string): Promise<void> {
-	await invoke('set_device_wallpaper', { path });
+export async function setDeviceWallpaper(path: string, target: 'both' | 'home' | 'lock' = 'both'): Promise<void> {
+	await invoke('set_device_wallpaper_target', { path, target });
 }
 
 /**

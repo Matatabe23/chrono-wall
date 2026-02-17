@@ -99,6 +99,186 @@ fn set_wallpaper_android(app: &tauri::AppHandle, path: String) -> Result<(), Str
   Ok(())
 }
 
+#[cfg(target_os = "android")]
+fn set_wallpaper_android_with_target(
+  app: &tauri::AppHandle,
+  path: String,
+  target: String,
+) -> Result<(), String> {
+  let ctx = android_context();
+  let vm = unsafe {
+    jni::JavaVM::from_raw(ctx.vm() as *mut _).map_err(|e| format!("JavaVM error: {}", e))?
+  };
+  let mut env = vm
+    .attach_current_thread()
+    .map_err(|e| format!("JNI attach thread: {}", e))?;
+  let context = unsafe { JObject::from_raw(ctx.context() as *mut _) };
+
+  let full = absolute_path_from_relative(app, &path)?;
+  let full_str = full
+    .to_str()
+    .ok_or_else(|| "Invalid path".to_string())?
+    .to_string();
+
+  let path_j: JString = env
+    .new_string(full_str)
+    .map_err(|e| format!("JNI new_string: {}", e))?;
+
+  // Bitmap bitmap = BitmapFactory.decodeFile(path)
+  let bitmap_factory = env
+    .find_class("android/graphics/BitmapFactory")
+    .map_err(|e| format!("Find BitmapFactory: {}", e))?;
+  let bitmap = env
+    .call_static_method(
+      bitmap_factory,
+      "decodeFile",
+      "(Ljava/lang/String;)Landroid/graphics/Bitmap;",
+      &[jni::objects::JValue::Object(&path_j)],
+    )
+    .map_err(|e| format!("BitmapFactory.decodeFile: {}", e))?
+    .l()
+    .map_err(|e| format!("Get bitmap object: {}", e))?;
+
+  // WallpaperManager wm = WallpaperManager.getInstance(context)
+  let wm_class = env
+    .find_class("android/app/WallpaperManager")
+    .map_err(|e| format!("Find WallpaperManager: {}", e))?;
+  let wm_obj = env
+    .call_static_method(
+      wm_class,
+      "getInstance",
+      "(Landroid/content/Context;)Landroid/app/WallpaperManager;",
+      &[jni::objects::JValue::Object(&context)],
+    )
+    .map_err(|e| format!("WallpaperManager.getInstance: {}", e))?
+    .l()
+    .map_err(|e| format!("Get WallpaperManager object: {}", e))?;
+
+  // int SDK_INT = android.os.Build.VERSION.SDK_INT
+  let ver_class = env
+    .find_class("android/os/Build$VERSION")
+    .map_err(|e| format!("Find Build.VERSION: {}", e))?;
+  let sdk_int = env
+    .get_static_field(ver_class, "SDK_INT", "I")
+    .map_err(|e| format!("Get SDK_INT: {}", e))?
+    .i()
+    .map_err(|e| format!("Read SDK_INT: {}", e))?;
+
+  // Flags (API >= 24)
+  let flag_system = env
+    .get_static_field(
+      env
+        .find_class("android/app/WallpaperManager")
+        .map_err(|e| format!("Find WallpaperManager for flags: {}", e))?,
+      "FLAG_SYSTEM",
+      "I",
+    )
+    .ok()
+    .and_then(|v| v.i().ok())
+    .unwrap_or(1);
+  let flag_lock = env
+    .get_static_field(
+      env
+        .find_class("android/app/WallpaperManager")
+        .map_err(|e| format!("Find WallpaperManager for flags: {}", e))?,
+      "FLAG_LOCK",
+      "I",
+    )
+    .ok()
+    .and_then(|v| v.i().ok())
+    .unwrap_or(2);
+
+  let which = target.to_lowercase();
+  if which == "home" {
+    if sdk_int >= 24 {
+      let rect_null = JObject::null();
+      env
+        .call_method(
+          wm_obj.clone(),
+          "setBitmap",
+          "(Landroid/graphics/Bitmap;Landroid/graphics/Rect;ZI)I",
+          &[
+            jni::objects::JValue::Object(&bitmap),
+            jni::objects::JValue::Object(&rect_null),
+            jni::objects::JValue::Bool(0),
+            jni::objects::JValue::Int(flag_system),
+          ],
+        )
+        .map_err(|e| format!("WallpaperManager.setBitmap(system): {}", e))?;
+    } else {
+      env
+        .call_method(
+          wm_obj.clone(),
+          "setBitmap",
+          "(Landroid/graphics/Bitmap;)V",
+          &[jni::objects::JValue::Object(&bitmap)],
+        )
+        .map_err(|e| format!("WallpaperManager.setBitmap: {}", e))?;
+    }
+  } else if which == "lock" {
+    if sdk_int >= 24 {
+      let rect_null = JObject::null();
+      env
+        .call_method(
+          wm_obj.clone(),
+          "setBitmap",
+          "(Landroid/graphics/Bitmap;Landroid/graphics/Rect;ZI)I",
+          &[
+            jni::objects::JValue::Object(&bitmap),
+            jni::objects::JValue::Object(&rect_null),
+            jni::objects::JValue::Bool(0),
+            jni::objects::JValue::Int(flag_lock),
+          ],
+        )
+        .map_err(|e| format!("WallpaperManager.setBitmap(lock): {}", e))?;
+    } else {
+      return Err("Lock screen wallpaper requires Android 7.0+".to_string());
+    }
+  } else {
+    // both: set home, then lock if possible
+    if sdk_int >= 24 {
+      let rect_null = JObject::null();
+      env
+        .call_method(
+          wm_obj.clone(),
+          "setBitmap",
+          "(Landroid/graphics/Bitmap;Landroid/graphics/Rect;ZI)I",
+          &[
+            jni::objects::JValue::Object(&bitmap),
+            jni::objects::JValue::Object(&rect_null),
+            jni::objects::JValue::Bool(0),
+            jni::objects::JValue::Int(flag_system),
+          ],
+        )
+        .map_err(|e| format!("WallpaperManager.setBitmap(system): {}", e))?;
+      env
+        .call_method(
+          wm_obj.clone(),
+          "setBitmap",
+          "(Landroid/graphics/Bitmap;Landroid/graphics/Rect;ZI)I",
+          &[
+            jni::objects::JValue::Object(&bitmap),
+            jni::objects::JValue::Object(&JObject::null()),
+            jni::objects::JValue::Bool(0),
+            jni::objects::JValue::Int(flag_lock),
+          ],
+        )
+        .map_err(|e| format!("WallpaperManager.setBitmap(lock): {}", e))?;
+    } else {
+      env
+        .call_method(
+          wm_obj.clone(),
+          "setBitmap",
+          "(Landroid/graphics/Bitmap;)V",
+          &[jni::objects::JValue::Object(&bitmap)],
+        )
+        .map_err(|e| format!("WallpaperManager.setBitmap: {}", e))?;
+    }
+  }
+
+  Ok(())
+}
+
 #[tauri::command]
 fn set_device_wallpaper(app: tauri::AppHandle, path: String) -> Result<(), String> {
   #[cfg(target_os = "android")]
@@ -111,6 +291,17 @@ fn set_device_wallpaper(app: tauri::AppHandle, path: String) -> Result<(), Strin
   }
 }
 
+#[tauri::command]
+fn set_device_wallpaper_target(app: tauri::AppHandle, path: String, target: String) -> Result<(), String> {
+  #[cfg(target_os = "android")]
+  {
+    return set_wallpaper_android_with_target(&app, path, target);
+  }
+  #[cfg(not(target_os = "android"))]
+  {
+    Err("Only supported on Android".to_string())
+  }
+}
 /// Папка конкретной коллекции: base/collections/{collection_id}
 fn collection_dir(app: &tauri::AppHandle, collection_id: &str) -> Result<PathBuf, String> {
   Ok(files_base_dir(app)?.join("collections").join(collection_id))
@@ -493,6 +684,7 @@ pub fn run() {
     read_file_from_app,
     delete_app_file,
     set_device_wallpaper,
+    set_device_wallpaper_target,
     create_collection,
     list_collections,
     get_screen_size,
