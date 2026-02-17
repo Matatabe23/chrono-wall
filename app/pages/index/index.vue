@@ -41,9 +41,26 @@
 								>
 							</v-avatar>
 						</template>
-						<v-card-title>{{ collection.name }}</v-card-title>
+						<v-card-title class="flex items-center gap-2">
+							{{ collection.name }}
+							<v-chip
+								v-if="isActive(collection.id)"
+								size="small"
+								color="primary"
+								variant="outlined"
+							>
+								Активна
+							</v-chip>
+						</v-card-title>
 					</v-card-item>
 					<v-card-actions class="justify-end">
+						<v-btn
+							icon
+							@click.stop="toggleCollection(collection)"
+							:title="isActive(collection.id) ? 'Пауза' : 'Старт'"
+						>
+							<v-icon>{{ isActive(collection.id) ? 'mdi-pause' : 'mdi-play' }}</v-icon>
+						</v-btn>
 						<v-btn
 							icon
 							color="error"
@@ -139,6 +156,7 @@
 	import { createCollection as createCollectionApi, listCollections, readAppFile, deleteCollection } from '~/helpers/tauri/file';
 	import { useRouter } from 'vue-router';
 	import UniversalModel from '~/components/UniversalModel.vue';
+	import { useAppStore } from '~/stores/app';
 
 	const collections = ref<Array<{ id: string; name: string; created_at: number }>>([]);
 	const showCreateDialog = ref(false);
@@ -150,6 +168,7 @@
 	const deleteConfirmed = ref(true);
 	const deleteTarget = ref<{ id: string; name: string } | null>(null);
 	const isDeleting = ref(false);
+	const appStore = useAppStore();
 
 	async function loadCollections() {
 		try {
@@ -192,6 +211,18 @@
 			}
 		} catch (e: any) {
 			console.error('Failed to load collections:', e);
+		}
+	}
+
+	function isActive(id: string) {
+		return appStore.isActiveCollection(id);
+	}
+
+	async function toggleCollection(c: { id: string; name: string }) {
+		if (isActive(c.id)) {
+			appStore.pauseRotation();
+		} else {
+			await appStore.startCollection(c.id);
 		}
 	}
 
