@@ -5,8 +5,6 @@ use tauri::Manager;
 #[cfg(target_os = "android")]
 use jni::objects::{JObject, JString};
 #[cfg(target_os = "android")]
-use jni::JNIEnv;
-#[cfg(target_os = "android")]
 use ndk_context::android_context;
 
 /// Базовая папка для файлов приложения. Относительные пути хранятся от неё.
@@ -165,25 +163,16 @@ fn set_wallpaper_android_with_target(
     .map_err(|e| format!("Read SDK_INT: {}", e))?;
 
   // Flags (API >= 24)
+  let wm_class_for_flags = env
+    .find_class("android/app/WallpaperManager")
+    .map_err(|e| format!("Find WallpaperManager for flags: {}", e))?;
   let flag_system = env
-    .get_static_field(
-      env
-        .find_class("android/app/WallpaperManager")
-        .map_err(|e| format!("Find WallpaperManager for flags: {}", e))?,
-      "FLAG_SYSTEM",
-      "I",
-    )
+    .get_static_field(&wm_class_for_flags, "FLAG_SYSTEM", "I")
     .ok()
     .and_then(|v| v.i().ok())
     .unwrap_or(1);
   let flag_lock = env
-    .get_static_field(
-      env
-        .find_class("android/app/WallpaperManager")
-        .map_err(|e| format!("Find WallpaperManager for flags: {}", e))?,
-      "FLAG_LOCK",
-      "I",
-    )
+    .get_static_field(&wm_class_for_flags, "FLAG_LOCK", "I")
     .ok()
     .and_then(|v| v.i().ok())
     .unwrap_or(2);
@@ -194,7 +183,7 @@ fn set_wallpaper_android_with_target(
       let rect_null = JObject::null();
       env
         .call_method(
-          wm_obj.clone(),
+          &wm_obj,
           "setBitmap",
           "(Landroid/graphics/Bitmap;Landroid/graphics/Rect;ZI)I",
           &[
@@ -208,7 +197,7 @@ fn set_wallpaper_android_with_target(
     } else {
       env
         .call_method(
-          wm_obj.clone(),
+          &wm_obj,
           "setBitmap",
           "(Landroid/graphics/Bitmap;)V",
           &[jni::objects::JValue::Object(&bitmap)],
@@ -220,7 +209,7 @@ fn set_wallpaper_android_with_target(
       let rect_null = JObject::null();
       env
         .call_method(
-          wm_obj.clone(),
+          &wm_obj,
           "setBitmap",
           "(Landroid/graphics/Bitmap;Landroid/graphics/Rect;ZI)I",
           &[
@@ -240,7 +229,7 @@ fn set_wallpaper_android_with_target(
       let rect_null = JObject::null();
       env
         .call_method(
-          wm_obj.clone(),
+          &wm_obj,
           "setBitmap",
           "(Landroid/graphics/Bitmap;Landroid/graphics/Rect;ZI)I",
           &[
@@ -253,7 +242,7 @@ fn set_wallpaper_android_with_target(
         .map_err(|e| format!("WallpaperManager.setBitmap(system): {}", e))?;
       env
         .call_method(
-          wm_obj.clone(),
+          &wm_obj,
           "setBitmap",
           "(Landroid/graphics/Bitmap;Landroid/graphics/Rect;ZI)I",
           &[
@@ -267,7 +256,7 @@ fn set_wallpaper_android_with_target(
     } else {
       env
         .call_method(
-          wm_obj.clone(),
+          &wm_obj,
           "setBitmap",
           "(Landroid/graphics/Bitmap;)V",
           &[jni::objects::JValue::Object(&bitmap)],
@@ -479,7 +468,7 @@ fn get_screen_size_android() -> Result<(i32, i32), String> {
   let context = unsafe { JObject::from_raw(ctx.context() as *mut _) };
 
   // DisplayMetrics metrics = context.getResources().getDisplayMetrics()
-  let resources_class = env
+  let _resources_class = env
     .find_class("android/content/Context")
     .map_err(|e| format!("Find Context: {}", e))?;
   let resources = env
