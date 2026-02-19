@@ -152,9 +152,19 @@
 		}
 	})
 
+	function loadImageForCrop(url: string): Promise<HTMLImageElement> {
+		return new Promise((resolve, reject) => {
+			const img = new Image()
+			img.crossOrigin = 'anonymous'
+			img.onload = () => resolve(img)
+			img.onerror = () => reject(new Error('Failed to load image'))
+			img.src = url
+		})
+	}
+
 	function onCropperReady() {
 		try {
-			if (!screenSize.value) return
+			if (!screenSize.value || !cropper) return
 			// Сброс до состояния "вписать изображение целиком в контейнер"
 			cropper.reset()
 			const ratio = screenAspectRatio.value
@@ -232,7 +242,7 @@
 	}
 
 	async function cropAndSave() {
-		if (!props.collection || !imageUrl.value || !screenSize.value) {
+		if (!props.collection || !imageUrl.value || !screenSize.value || !cropper) {
 			return
 		}
 
@@ -240,34 +250,43 @@
 			isSaving.value = true
 			error.value = null
 
-			// Данные об области выделения в координатах исходного изображения
 			const data = cropper.getData()
 			const imgData = cropper.getImageData()
+			const crop = {
+				x: Math.round(data.x),
+				y: Math.round(data.y),
+				width: Math.round(data.width),
+				height: Math.round(data.height)
+			}
 			const itemMeta = {
 				screen: { width: screenSize.value.width, height: screenSize.value.height },
 				image: { width: Math.round(imgData.naturalWidth), height: Math.round(imgData.naturalHeight) },
-				crop: {
-					x: Math.round(data.x),
-					y: Math.round(data.y),
-					width: Math.round(data.width),
-					height: Math.round(data.height)
-				},
+				crop: { ...crop },
+				savedAsCrop: true, // файл уже обрезан по выделенной области
 				created_at: Date.now()
 			}
 
-			// Сохраняем исходный файл без изменений
+			// Рисуем выделенную область на canvas и сохраняем её как файл — обои будут ставиться именно из этой области
+			const canvas = document.createElement('canvas')
+			canvas.width = crop.width
+			canvas.height = crop.height
+			const ctx = canvas.getContext('2d')
+			if (!ctx) throw new Error('Canvas 2d not available')
+			const img = await loadImageForCrop(imageUrl.value)
+			ctx.drawImage(
+				img,
+				crop.x, crop.y, crop.width, crop.height, // источник: выделенная область
+				0, 0, crop.width, crop.height             // в canvas целиком
+			)
+			const blob = await new Promise<Blob>((resolve, reject) => {
+				canvas.toBlob((b) => (b ? resolve(b) : reject(new Error('toBlob failed'))), 'image/jpeg', 0.92)
+			})
+			const uint8Array = new Uint8Array(await blob.arrayBuffer())
+
 			const baseName = (selectedFileName.value ?? `image_${Date.now()}.jpg`)
-			if (selectedPath.value && !selectedPath.value.startsWith('content:')) {
-				await saveFileToCollection(props.collection.id, baseName, {
-					sourcePath: selectedPath.value
-				})
-			} else if (imageFile.value) {
-				const arrayBuffer = await imageFile.value.arrayBuffer()
-				const uint8Array = new Uint8Array(arrayBuffer)
-				await saveFileToCollection(props.collection.id, baseName, {
-					contents: uint8Array
-				})
-			}
+			await saveFileToCollection(props.collection.id, baseName, {
+				contents: uint8Array
+			})
 
 			// Обновляем _meta.json коллекции
 			let colMeta: any = null

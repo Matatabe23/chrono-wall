@@ -185,6 +185,7 @@
 					file: string;
 					screen: { width: number; height: number };
 					crop: { x: number; y: number; width: number; height: number };
+					savedAsCrop?: boolean;
 				}>;
 			};
 			const items = Array.isArray(meta.items) ? [...meta.items] : [];
@@ -197,22 +198,18 @@
 					const bytes = await readAppFile(`collections/${id}/${it.file}`);
 					const blob = new Blob([bytes], { type: 'image/jpeg' });
 					const fullUrl = URL.createObjectURL(blob);
+					const imgEl = await loadImage(fullUrl);
 					const canvas = document.createElement('canvas');
 					canvas.width = it.screen.width;
 					canvas.height = it.screen.height;
-					const imgEl = await loadImage(fullUrl);
 					const ctx = canvas.getContext('2d')!;
-					ctx.drawImage(
-						imgEl,
-						it.crop.x,
-						it.crop.y,
-						it.crop.width,
-						it.crop.height,
-						0,
-						0,
-						canvas.width,
-						canvas.height
-					);
+					if (it.savedAsCrop) {
+						// Файл уже обрезан по выделенной области — рисуем целиком
+						ctx.drawImage(imgEl, 0, 0, imgEl.naturalWidth, imgEl.naturalHeight, 0, 0, canvas.width, canvas.height);
+					} else {
+						// Старый формат: полное изображение, применяем crop
+						ctx.drawImage(imgEl, it.crop.x, it.crop.y, it.crop.width, it.crop.height, 0, 0, canvas.width, canvas.height);
+					}
 					const blobOut: Blob = await new Promise((resolve) =>
 						canvas.toBlob((b) => resolve(b as Blob), 'image/jpeg', 0.92)
 					);

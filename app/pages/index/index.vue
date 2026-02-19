@@ -188,7 +188,7 @@
 				try {
 					const metaBytes = await readAppFile(`collections/${c.id}/_meta.json`)
 					const metaText = new TextDecoder().decode(metaBytes)
-					const meta = JSON.parse(metaText) as { items?: Array<{ order: number; file: string; screen: { width: number; height: number }, crop: { x: number; y: number; width: number; height: number } }> }
+					const meta = JSON.parse(metaText) as { items?: Array<{ order: number; file: string; screen: { width: number; height: number }; crop: { x: number; y: number; width: number; height: number }; savedAsCrop?: boolean }> }
 					const items = Array.isArray(meta.items) ? [...meta.items] : []
 					items.sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
 					const first = items[0]
@@ -206,11 +206,11 @@
 						im.src = fullUrl
 					})
 					const ctx = canvas.getContext('2d')!
-					ctx.drawImage(
-						imgEl,
-						first.crop.x, first.crop.y, first.crop.width, first.crop.height,
-						0, 0, canvas.width, canvas.height
-					)
+					if (first.savedAsCrop) {
+						ctx.drawImage(imgEl, 0, 0, imgEl.naturalWidth, imgEl.naturalHeight, 0, 0, canvas.width, canvas.height)
+					} else {
+						ctx.drawImage(imgEl, first.crop.x, first.crop.y, first.crop.width, first.crop.height, 0, 0, canvas.width, canvas.height)
+					}
 					const blobOut: Blob = await new Promise((resolve) =>
 						canvas.toBlob((b) => resolve(b as Blob), 'image/jpeg', 0.92)
 					)
