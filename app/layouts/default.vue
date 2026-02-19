@@ -13,7 +13,7 @@
 
 			<div class="flex gap-2 ml-auto mr-4 items-center">
 				<LanguageSelect />
-				<ThemeToggle />
+				<!-- <ThemeToggle /> -->
 			</div>
 		</v-app-bar>
 
