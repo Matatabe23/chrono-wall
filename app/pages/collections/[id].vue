@@ -198,7 +198,8 @@
 			for (const it of pageItems) {
 				try {
 					const bytes = await readAppFile(`collections/${id}/${it.file}`);
-					const blob = new Blob([bytes], { type: 'image/jpeg' });
+					const isWebp = /\.webp$/i.test(it.file);
+					const blob = new Blob([bytes], { type: isWebp ? 'image/webp' : 'image/jpeg' });
 					const fullUrl = URL.createObjectURL(blob);
 					const imgEl = await loadImage(fullUrl);
 					const canvas = document.createElement('canvas');

@@ -196,7 +196,8 @@
 					const first = items[0]
 					if (!first) { covers.value[c.id] = null; continue }
 					const imgBytes = await readAppFile(`collections/${c.id}/${first.file}`)
-					const fullBlob = new Blob([imgBytes], { type: 'image/jpeg' })
+					const isWebp = /\.webp$/i.test(first.file)
+					const fullBlob = new Blob([imgBytes], { type: isWebp ? 'image/webp' : 'image/jpeg' })
 					const fullUrl = URL.createObjectURL(fullBlob)
 					const canvas = document.createElement('canvas')
 					canvas.width = first.screen.width

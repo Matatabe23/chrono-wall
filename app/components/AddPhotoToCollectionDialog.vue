@@ -280,12 +280,14 @@
 				crop.x, crop.y, crop.width, crop.height, // источник: выделенная область
 				0, 0, crop.width, crop.height             // в canvas целиком
 			)
+			// WebP даёт меньший размер при том же визуальном качестве (без потери качества)
 			const blob = await new Promise<Blob>((resolve, reject) => {
-				canvas.toBlob((b) => (b ? resolve(b) : reject(new Error('toBlob failed'))), 'image/jpeg', 0.92)
+				canvas.toBlob((b) => (b ? resolve(b) : reject(new Error('toBlob failed'))), 'image/webp', 0.95)
 			})
 			const uint8Array = new Uint8Array(await blob.arrayBuffer())
 
-			const baseName = (selectedFileName.value ?? `image_${Date.now()}.jpg`)
+			let baseName = (selectedFileName.value ?? `image_${Date.now()}.jpg`).replace(/\.(jpe?g|png|gif|bmp)$/i, '.webp')
+			if (!/\.webp$/i.test(baseName)) baseName = baseName ? `${baseName}.webp` : `image_${Date.now()}.webp`
 			await saveFileToCollection(props.collection.id, baseName, {
 				contents: uint8Array
 			})
