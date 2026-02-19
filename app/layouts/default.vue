@@ -18,8 +18,8 @@
 		</v-app-bar>
 
 		<UniversalModel v-model:isOpen="settingsOpen" maxWidth="520px">
-			<template #top>Настройки</template>
-			<div class="mb-2 font-medium">Частота смены фото</div>
+			<template #top>{{ $t('settings.title') }}</template>
+			<div class="mb-2 font-medium">{{ $t('settings.frequencyLabel') }}</div>
 			<v-slider
 				v-model="sliderIndex"
 				:min="0"
@@ -27,9 +27,9 @@
 				:step="1"
 				:show-ticks="false"
 			/>
-			<div class="mt-2 text-medium-emphasis">Текущая: {{ currentLabel }}</div>
+			<div class="mt-2 text-medium-emphasis">{{ $t('settings.currentLabel', { label: currentLabel }) }}</div>
 			<v-divider class="my-4" />
-			<div class="mt-4 mb-2 font-medium">Отображать по</div>
+			<div class="mt-4 mb-2 font-medium">{{ $t('settings.orderLabel') }}</div>
 			<div class="flex items-center gap-3">
 				<v-btn
 					icon
@@ -37,7 +37,7 @@
 					variant="tonal"
 					:color="appStore.rotationMode === 'queue' ? 'primary' : undefined"
 					@click="setRotationMode('queue')"
-					title="Очереди (новые → старые)"
+					:title="$t('settings.orderQueue')"
 				>
 					<v-icon>mdi-format-list-bulleted</v-icon>
 				</v-btn>
@@ -47,16 +47,16 @@
 					variant="tonal"
 					:color="appStore.rotationMode === 'random' ? 'primary' : undefined"
 					@click="setRotationMode('random')"
-					title="Рандомно без повторений"
+					:title="$t('settings.orderRandom')"
 				>
 					<v-icon>mdi-shuffle-variant</v-icon>
 				</v-btn>
 			</div>
 			<div class="mt-2 text-medium-emphasis text-sm">
-				Очереди: новые → старые; Рандом: без повторений за круг
+				{{ $t('settings.orderHint') }}
 			</div>
 			<v-divider class="my-4" />
-			<div class="mt-4 mb-2 font-medium">Куда ставить обои</div>
+			<div class="mt-4 mb-2 font-medium">{{ $t('settings.targetLabel') }}</div>
 			<div class="flex items-center gap-2">
 				<v-btn
 					icon
@@ -64,7 +64,7 @@
 					variant="tonal"
 					:color="appStore.wallpaperTarget === 'both' ? 'primary' : undefined"
 					@click="setWallpaperTarget('both')"
-					title="Экран и блокировка"
+					:title="$t('settings.targetBoth')"
 				>
 					<v-icon>mdi-cellphone</v-icon>
 				</v-btn>
@@ -74,7 +74,7 @@
 					variant="tonal"
 					:color="appStore.wallpaperTarget === 'lock' ? 'primary' : undefined"
 					@click="setWallpaperTarget('lock')"
-					title="Только блокировка"
+					:title="$t('settings.targetLock')"
 				>
 					<v-icon>mdi-lock</v-icon>
 				</v-btn>
@@ -84,7 +84,7 @@
 					variant="tonal"
 					:color="appStore.wallpaperTarget === 'home' ? 'primary' : undefined"
 					@click="setWallpaperTarget('home')"
-					title="Только главный экран"
+					:title="$t('settings.targetHome')"
 				>
 					<v-icon>mdi-home</v-icon>
 				</v-btn>
@@ -92,7 +92,7 @@
 			<v-divider class="my-4" />
 			<template #bottom>
 				<v-spacer />
-				<v-btn text @click="settingsOpen = false">Закрыть</v-btn>
+				<v-btn text @click="settingsOpen = false">{{ $t('common.close') }}</v-btn>
 			</template>
 		</UniversalModel>
 
@@ -104,12 +104,14 @@
 
 <script setup>
 	import { ref, onMounted, computed } from 'vue';
+	import { useI18n } from 'vue-i18n';
 	import { getDeviceInfo } from '~/helpers/tauri';
 	import { useAppStore } from '~/stores/app';
 	import UniversalModel from '~/components/UniversalModel.vue';
 
+	const { t } = useI18n();
 	const isMobile = ref(false);
-	const platform = ref(null); // 'android' | 'ios' | 'windows' | 'macos' | 'linux' | null (браузер)
+	const platform = ref(null);
 
 	onMounted(async () => {
 		const { platform: p, isMobile: m } = await getDeviceInfo();
@@ -120,12 +122,10 @@
 	const settingsOpen = ref(false);
 	const appStore = useAppStore();
 
-	const ROTATION_STOPPED_MESSAGE = 'Ротация отключена: изменены настройки. Запустите коллекцию заново.';
-
 	async function stopRotationIfActive() {
 		if (appStore.isRotating) {
 			await appStore.pauseRotation();
-			appStore.setRotationStoppedWarning(ROTATION_STOPPED_MESSAGE);
+			appStore.setRotationStoppedWarning(t('warnings.rotationStoppedSettings'));
 		}
 	}
 
@@ -139,14 +139,13 @@
 		appStore.wallpaperTarget = target;
 	}
 
-	// Минимальный интервал смены обоев — 15 минут
 	const durations = [15, 30, 60, 120, 180, 300, 600, 900, 1440];
 	function fmtLabel(m) {
-		if (m < 60) return `${m} мин`;
+		if (m < 60) return t('interval.minutes', { n: m });
 		const h = Math.round(m / 60);
-		if (h === 1) return '1 час';
-		if (h >= 2 && h <= 4) return `${h} часа`;
-		return `${h} часов`;
+		if (h === 1) return t('interval.hour');
+		if (h >= 2 && h <= 4) return t('interval.hours2_4', { n: h });
+		return t('interval.hours5plus', { n: h });
 	}
 
 	function nearestIndex(m) {

@@ -12,7 +12,7 @@
 				{{ appStore.rotationStoppedWarning }}
 			</v-alert>
 			<div class="flex items-center justify-between">
-				<div class="text-h5">Коллекции обоев</div>
+				<div class="text-h5">{{ $t('collections.title') }}</div>
 			</div>
 
 			<v-btn
@@ -20,7 +20,7 @@
 				@click="showCreateDialog = true"
 				prepend-icon="mdi-plus"
 			>
-				Создать коллекцию
+				{{ $t('collections.create') }}
 			</v-btn>
 
 			<!-- Список коллекций -->
@@ -59,15 +59,15 @@
 								color="primary"
 								variant="outlined"
 							>
-								Активна
-							</v-chip>
+							{{ $t('collections.active') }}
+						</v-chip>
 						</v-card-title>
 					</v-card-item>
 					<v-card-actions class="justify-end">
 						<v-btn
 							icon
 							@click.stop="toggleCollection(collection)"
-							:title="isActive(collection.id) ? 'Пауза' : 'Старт'"
+							:title="isActive(collection.id) ? $t('collections.pause') : $t('collections.start')"
 						>
 							<v-icon>{{ isActive(collection.id) ? 'mdi-pause' : 'mdi-play' }}</v-icon>
 						</v-btn>
@@ -89,9 +89,9 @@
 				style="min-height: 200px"
 			>
 				<div class="text-center text-medium-emphasis">
-					<div class="text-h6 mb-2">Нет коллекций</div>
+					<div class="text-h6 mb-2">{{ $t('collections.emptyTitle') }}</div>
 					<div class="text-body-2">
-						Создайте первую коллекцию для организации ваших обоев
+						{{ $t('collections.emptyHint') }}
 					</div>
 				</div>
 			</div>
@@ -101,15 +101,15 @@
 			v-model:isOpen="showCreateDialog"
 			maxWidth="500px"
 		>
-			<template #top>Создать коллекцию</template>
+			<template #top>{{ $t('collectionCreate.title') }}</template>
 			<v-text-field
 				v-model="newCollectionName"
-				label="Название коллекции"
+				:label="$t('collectionCreate.nameLabel')"
 				:rules="[
-					(v) => !!v || 'Название обязательно',
+					(v) => !!v || t('collectionCreate.nameRequired'),
 					(v) =>
 						!collections.some((c) => c.name === v) ||
-						'Коллекция с таким названием уже существует'
+						t('collectionCreate.nameExists')
 				]"
 				autofocus
 				@keyup.enter="onCreateCollection"
@@ -119,13 +119,13 @@
 				<v-btn
 					text
 					@click="showCreateDialog = false"
-					>Отмена</v-btn
+					>{{ $t('common.cancel') }}</v-btn
 				>
 				<v-btn
 					color="primary"
 					@click="onCreateCollection"
 					:loading="isCreating"
-					>Создать</v-btn
+					>{{ $t('common.create') }}</v-btn
 				>
 			</template>
 		</UniversalModel>
@@ -134,27 +134,27 @@
 			v-model:isOpen="showDeleteDialog"
 			maxWidth="480px"
 		>
-			<template #top>Удаление коллекции</template>
+			<template #top>{{ $t('collectionDelete.title') }}</template>
 			<div class="mb-3">
-				Вы уверены, что хотите удалить коллекцию «{{ deleteTarget?.name }}»?
+				{{ $t('collectionDelete.confirm', { name: deleteTarget?.name ?? '' }) }}
 			</div>
 			<v-checkbox
 				v-model="deleteConfirmed"
-				label="Файлы тоже удалить"
+				:label="$t('collectionDelete.deleteFiles')"
 			/>
 			<template #bottom>
 				<v-spacer />
 				<v-btn
 					text
 					@click="closeDeleteDialog"
-					>Отмена</v-btn
+					>{{ $t('common.cancel') }}</v-btn
 				>
 				<v-btn
 					color="error"
 					:disabled="!deleteConfirmed"
 					:loading="isDeleting"
 					@click="doDelete"
-					>Удалить</v-btn
+					>{{ $t('common.delete') }}</v-btn
 				>
 			</template>
 		</UniversalModel>
@@ -163,11 +163,13 @@
 
 <script setup lang="ts">
 	import { ref, onMounted, nextTick } from 'vue';
+	import { useI18n } from 'vue-i18n';
 	import { createCollection as createCollectionApi, listCollections, readAppFile, deleteCollection } from '~/helpers/tauri/file';
 	import { useRouter } from 'vue-router';
 	import UniversalModel from '~/components/UniversalModel.vue';
 	import { useAppStore } from '~/stores/app';
 
+	const { t } = useI18n();
 	const collections = ref<Array<{ id: string; name: string; created_at: number }>>([]);
 	const showCreateDialog = ref(false);
 	const newCollectionName = ref('');

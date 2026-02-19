@@ -1,10 +1,9 @@
 <template>
 	<UniversalModel v-model:isOpen="isOpen" maxWidth="90vw" :minHeight="'auto'">
 		<template #top>
-			Добавить фото в коллекцию "{{ collection?.name }}"
+			{{ $t('addPhoto.title', { name: collection?.name ?? '' }) }}
 		</template>
 
-		<!-- Шаг 1: Выбор изображения -->
 		<div v-if="step === 1" class="flex flex-col gap-4">
 			<v-btn
 				color="primary"
@@ -13,7 +12,7 @@
 				prepend-icon="mdi-image"
 				block
 			>
-				Выбрать изображение
+				{{ $t('addPhoto.pickImage') }}
 			</v-btn>
 
 			<div v-if="error" class="text-error">{{ error }}</div>
@@ -45,28 +44,31 @@
 			</div>
 
 			<div class="flex gap-2">
-				<v-btn text @click="step = 1">Назад</v-btn>
+				<v-btn text @click="step = 1">{{ $t('common.back') }}</v-btn>
 				<v-spacer />
 				<v-btn color="primary" @click="cropAndSave" :loading="isSaving">
-					Сохранить
+					{{ $t('common.save') }}
 				</v-btn>
 			</div>
 		</div>
 
 		<template #bottom>
 			<v-spacer />
-			<v-btn text @click="close">Закрыть</v-btn>
+			<v-btn text @click="close">{{ $t('common.close') }}</v-btn>
 		</template>
 	</UniversalModel>
 </template>
 
 <script setup lang="ts">
 	import { ref, watch, nextTick, computed } from 'vue'
+	import { useI18n } from 'vue-i18n'
 	import VuePictureCropper, { cropper } from 'vue-picture-cropper'
 	import 'cropperjs/dist/cropper.css'
 	import { getDeviceInfo } from '~/helpers/tauri'
 	import { getScreenSize, saveFileToCollection, readAppFile } from '~/helpers/tauri/file'
 	import UniversalModel from '~/components/UniversalModel.vue'
+
+	const { t } = useI18n()
 
 	const props = defineProps<{
 		modelValue: boolean
@@ -195,7 +197,7 @@
 				multiple: false,
 				directory: false,
 				filters: [{
-					name: 'Изображения',
+					name: t('addPhoto.imagesFilter'),
 					extensions: ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp']
 				}]
 			})

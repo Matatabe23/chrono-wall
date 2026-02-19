@@ -8,7 +8,7 @@
 					@click="goBack"
 				>
 					<v-icon class="mr-2">mdi-arrow-left</v-icon>
-					Назад
+					{{ $t('common.back') }}
 				</v-btn>
 			</div>
 		</div>
@@ -18,7 +18,7 @@
 			class="mb-4 w-full"
 			@click="showAddDialog = true"
 		>
-			Добавить фото
+			{{ $t('collectionPage.addPhoto') }}
 		</v-btn>
 
 		<div
@@ -59,8 +59,8 @@
 			class="flex items-center justify-center pa-8 border-dashed border-2 rounded"
 		>
 			<div class="text-medium-emphasis">
-				<div class="text-h6 mb-2">Нет изображений</div>
-				<div>Добавьте фото в эту коллекцию</div>
+				<div class="text-h6 mb-2">{{ $t('collectionPage.noImages') }}</div>
+				<div>{{ $t('collectionPage.addPhotosHint') }}</div>
 			</div>
 		</div>
 
@@ -69,7 +69,7 @@
 			class="mt-3 flex items-center justify-between gap-4"
 		>
 			<div class="text-medium-emphasis">
-				Страница {{ currentPage }} из {{ totalPages }} · {{ totalItems }} фото
+				{{ $t('collectionPage.pageOf', { current: currentPage, total: totalPages, count: totalItems }) }}
 			</div>
 			<div class="flex items-center gap-2">
 				<v-btn
@@ -100,20 +100,20 @@
 		v-model:isOpen="showDeleteImageDialog"
 		maxWidth="420px"
 	>
-		<template #top>Удаление фото</template>
-		<div class="mb-3">Вы уверены, что хотите удалить это фото из коллекции?</div>
+		<template #top>{{ $t('collectionPage.deletePhotoTitle') }}</template>
+		<div class="mb-3">{{ $t('collectionPage.deletePhotoConfirm') }}</div>
 		<template #bottom>
 			<v-spacer />
 			<v-btn
 				text
 				@click="closeDeleteImage"
-				>Отмена</v-btn
+				>{{ $t('common.cancel') }}</v-btn
 			>
 			<v-btn
 				color="error"
 				:loading="isDeleting"
 				@click="doDeleteImage"
-				>Удалить</v-btn
+				>{{ $t('common.delete') }}</v-btn
 			>
 		</template>
 	</UniversalModel>
@@ -121,6 +121,7 @@
 
 <script setup lang="ts">
 	import { onMounted, ref, onBeforeUnmount, computed, watch } from 'vue';
+	import { useI18n } from 'vue-i18n';
 	import { useRoute, useRouter } from 'vue-router';
 	import {
 		readAppFile,
@@ -132,12 +133,13 @@
 	import AddPhotoToCollectionDialog from '~/components/AddPhotoToCollectionDialog.vue';
 	import UniversalModel from '~/components/UniversalModel.vue';
 
+	const { t } = useI18n();
 	const route = useRoute();
 	const appStore = useAppStore();
 	const router = useRouter();
 	const id = route.params.id as string;
 	const images = ref<Array<{ path: string; url: string; width?: number; height?: number }>>([]);
-	const title = ref('Коллекция');
+	const title = ref(t('collections.defaultName'));
 	const showAddDialog = ref(false);
 	const showDeleteImageDialog = ref(false);
 	const deleteTarget = ref<{ path: string; url: string } | null>(null);
@@ -163,9 +165,9 @@
 		try {
 			const cols = await listCollections();
 			const c = cols.find((c) => c.id === id);
-			title.value = c ? c.name : 'Коллекция';
+			title.value = c ? c.name : t('collections.defaultName');
 		} catch {
-			title.value = 'Коллекция';
+			title.value = t('collections.defaultName');
 		}
 	}
 
@@ -248,7 +250,7 @@
 		showAddDialog.value = false;
 		if (appStore.isActiveCollection(id)) {
 			await appStore.pauseRotation();
-			appStore.setRotationStoppedWarning('Ротация отключена: в коллекцию добавлено фото. Запустите коллекцию заново.');
+			appStore.setRotationStoppedWarning(t('warnings.rotationStoppedPhotoAdded'));
 		}
 		currentPage.value = 1;
 		await loadImages();
@@ -290,7 +292,7 @@
 			});
 			if (appStore.isActiveCollection(id)) {
 				await appStore.pauseRotation();
-				appStore.setRotationStoppedWarning('Ротация отключена: фото удалено из коллекции. Запустите коллекцию заново.');
+				appStore.setRotationStoppedWarning(t('warnings.rotationStoppedPhotoDeleted'));
 			}
 			await loadImages();
 			closeDeleteImage();
