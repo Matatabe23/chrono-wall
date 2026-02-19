@@ -288,6 +288,10 @@
 			await saveFileToCollection(id, `_meta.json`, {
 				contents: enc.encode(JSON.stringify(meta))
 			});
+			if (appStore.isActiveCollection(id)) {
+				await appStore.pauseRotation();
+				appStore.setRotationStoppedWarning('Ротация отключена: фото удалено из коллекции. Запустите коллекцию заново.');
+			}
 			await loadImages();
 			closeDeleteImage();
 		} catch (e) {
