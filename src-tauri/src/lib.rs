@@ -69,6 +69,10 @@ fn set_wallpaper_android(app: &tauri::AppHandle, path: String) -> Result<(), Str
     .l()
     .map_err(|e| format!("Get bitmap object: {}", e))?;
 
+  if env.is_same_object(&bitmap, JObject::null()).map_err(|e| e.to_string())? {
+    return Err("Failed to decode image or file not found".to_string());
+  }
+
   // WallpaperManager wm = WallpaperManager.getInstance(context)
   let wm_class = env
     .find_class("android/app/WallpaperManager")
@@ -136,6 +140,10 @@ fn set_wallpaper_android_with_target(
     .map_err(|e| format!("BitmapFactory.decodeFile: {}", e))?
     .l()
     .map_err(|e| format!("Get bitmap object: {}", e))?;
+
+  if env.is_same_object(&bitmap, JObject::null()).map_err(|e| e.to_string())? {
+    return Err("Failed to decode image or file not found".to_string());
+  }
 
   // WallpaperManager wm = WallpaperManager.getInstance(context)
   let wm_class = env

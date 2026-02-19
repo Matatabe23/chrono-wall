@@ -12,6 +12,7 @@ import android.graphics.BitmapFactory
 import android.os.Build
 import android.os.Environment
 import android.os.IBinder
+import androidx.core.app.ServiceCompat
 import androidx.core.app.NotificationCompat
 import java.io.File
 
@@ -26,22 +27,25 @@ class WallpaperRotationService : Service() {
     override fun onCreate() {
         super.onCreate()
         createNotificationChannel()
+        // Вызываем startForeground() в onCreate(), чтобы система получила его до таймаута (onStartCommand может прийти с задержкой)
+        startForeground(NOTIFICATION_ID, buildNotification())
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+
         val prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         if (!prefs.getBoolean(KEY_RUNNING, false)) {
-            stopSelf()
+            stopForegroundAndRemove()
             return START_NOT_STICKY
         }
 
         val sequenceStr = prefs.getString(KEY_SEQUENCE, null) ?: run {
-            stopSelf()
+            stopForegroundAndRemove()
             return START_NOT_STICKY
         }
         val paths = sequenceStr.split(SEQUENCE_DELIMITER).filter { it.isNotBlank() }
         if (paths.isEmpty()) {
-            stopSelf()
+            stopForegroundAndRemove()
             return START_NOT_STICKY
         }
 
@@ -49,11 +53,9 @@ class WallpaperRotationService : Service() {
         if (scheduleOnly) {
             val intervalMinutes = prefs.getInt(KEY_INTERVAL_MINUTES, 15).coerceAtLeast(15)
             scheduleNextAlarm(this, prefs, intervalMinutes)
-            stopSelf()
+            stopForegroundAndRemove()
             return START_NOT_STICKY
         }
-
-        startForeground(NOTIFICATION_ID, buildNotification())
 
         val intervalMinutes = prefs.getInt(KEY_INTERVAL_MINUTES, 15).coerceAtLeast(15)
         val lastChangeAt = prefs.getLong(KEY_LAST_CHANGE_AT, 0L)
@@ -62,7 +64,7 @@ class WallpaperRotationService : Service() {
         // Если приложение недавно обновило обои (JS таймер), только перепланируем будильник
         if (now < nextChangeAt - 15_000) {
             scheduleNextAlarm(this, prefs, intervalMinutes)
-            stopSelf()
+            stopForegroundAndRemove()
             return START_NOT_STICKY
         }
 
@@ -83,8 +85,13 @@ class WallpaperRotationService : Service() {
             .apply()
 
         scheduleNextAlarm(this, prefs, intervalMinutes)
-        stopSelf()
+        stopForegroundAndRemove()
         return START_NOT_STICKY
+    }
+
+    private fun stopForegroundAndRemove() {
+        ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE)
+        stopSelf()
     }
 
     private fun getPictureDir(): File? {
