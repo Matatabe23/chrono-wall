@@ -18,13 +18,13 @@
 			<div v-if="error" class="text-error">{{ error }}</div>
 		</div>
 
-		<!-- Шаг 2: Обрезка изображения. Область обрезки — в той же пропорции, что и экран телефона. -->
-		<div v-if="step === 2 && imageUrl && screenSize" class="flex flex-col gap-4 overflow-hidden">
-			<!-- Обёртка с соотношением сторон экрана: сетка обрезки = размер экрана -->
+		<!-- Шаг 2: Обрезка изображения. Сетка обрезки = размер окна приложения (1:1 по пиксельным пропорциям). -->
+		<div v-if="step === 2 && imageUrl" class="flex flex-col gap-4 overflow-hidden">
+			<!-- Обёртка с соотношением сторон окна Nuxt — сетка 1:1 с окном -->
 			<div
 				class="cropper-screen-wrapper"
 				:style="{
-					aspectRatio: screenAspectRatio,
+					aspectRatio: gridAspectRatio,
 					maxHeight: '70vh',
 				}"
 			>
@@ -60,7 +60,7 @@
 </template>
 
 <script setup lang="ts">
-	import { ref, watch, nextTick, computed } from 'vue'
+	import { ref, watch, nextTick, computed, onMounted, onUnmounted } from 'vue'
 	import { useI18n } from 'vue-i18n'
 	import VuePictureCropper, { cropper } from 'vue-picture-cropper'
 	import 'cropperjs/dist/cropper.css'
@@ -85,7 +85,10 @@
 	const imageFile = ref<File | null>(null)
 	const selectedPath = ref<string | null>(null)
 	const selectedFileName = ref<string | null>(null)
+	/** Размер экрана устройства (для метаданных обоев на Android). */
 	const screenSize = ref<{ width: number; height: number; xdpi?: number; ydpi?: number } | null>(null)
+	/** Пиксельный размер окна Nuxt-приложения — сетка обрезки 1:1 с окном. */
+	const windowSize = ref<{ width: number; height: number }>({ width: 1080, height: 1920 })
 	const isPicking = ref(false)
 	const isSaving = ref(false)
 	const error = ref<string | null>(null)
@@ -95,29 +98,28 @@
 		set: (v: boolean) => emit('update:modelValue', v)
 	})
 
-	/** Соотношение сторон экрана по физическим дюймам (widthInches/heightInches), чтобы сетка обрезки повторяла телефон. */
-	const screenAspectRatio = computed(() => {
-		const s = screenSize.value
-		if (!s) return 1080 / 1920
-		const { width, height, xdpi, ydpi } = s
-		if (xdpi != null && ydpi != null && xdpi > 0 && ydpi > 0) {
-			// Ширина и высота в дюймах: width/xdpi, height/ydpi → aspect = (width*ydpi)/(height*xdpi)
-			return (width * ydpi) / (height * xdpi)
+	function updateWindowSize() {
+		if (typeof window !== 'undefined') {
+			windowSize.value = { width: window.innerWidth, height: window.innerHeight }
 		}
-		return width / height
+	}
+
+	/** Соотношение сторон окна приложения — сетка обрезки повторяет размер окна (1:1 по пропорциям). */
+	const gridAspectRatio = computed(() => {
+		const w = windowSize.value
+		if (!w?.width || !w?.height) return 1080 / 1920
+		return w.width / w.height
 	})
 
-	const cropperOptions = computed(() => {
-		if (!screenSize.value) return {}
-		return {
-			viewMode: 1,
-			dragMode: 'none' as const,
-			movable: false,
-			zoomable: false,
-			zoomOnWheel: false,
-			zoomOnTouch: false,
-			scalable: false,
-			aspectRatio: screenAspectRatio.value,
+	const cropperOptions = computed(() => ({
+		viewMode: 1,
+		dragMode: 'none' as const,
+		movable: false,
+		zoomable: false,
+		zoomOnWheel: false,
+		zoomOnTouch: false,
+		scalable: false,
+		aspectRatio: gridAspectRatio.value,
 			autoCropArea: 0.9,
 			restore: false,
 			guides: true,
@@ -126,9 +128,16 @@
 			cropBoxMovable: true,
 			cropBoxResizable: true,
 			toggleDragModeOnDblclick: false,
-			background: false,
-			responsive: true,
-		}
+		background: false,
+		responsive: true,
+	}))
+
+	onMounted(() => {
+		updateWindowSize()
+		window.addEventListener('resize', updateWindowSize)
+	})
+	onUnmounted(() => {
+		window.removeEventListener('resize', updateWindowSize)
 	})
 
 	watch(() => props.modelValue, async (newVal) => {
@@ -137,19 +146,19 @@
 			imageUrl.value = ''
 			imageFile.value = null
 			error.value = null
+			updateWindowSize()
 
-			// Получаем размер экрана
+			// Размер экрана устройства — для метаданных обоев на Android
 			try {
 				const { platform } = await getDeviceInfo()
 				if (platform === 'android') {
 					screenSize.value = await getScreenSize()
 				} else {
-					// Для тестирования на ПК используем стандартный размер
-					screenSize.value = { width: 1080, height: 1920 }
+					screenSize.value = { width: windowSize.value.width, height: windowSize.value.height }
 				}
 			} catch (e: any) {
 				console.error('Failed to get screen size:', e)
-				screenSize.value = { width: 1080, height: 1920 } // Fallback
+				screenSize.value = { width: windowSize.value.width, height: windowSize.value.height }
 			}
 		}
 	})
@@ -166,10 +175,10 @@
 
 	function onCropperReady() {
 		try {
-			if (!screenSize.value || !cropper) return
+			if (!cropper) return
 			// Сброс до состояния "вписать изображение целиком в контейнер"
 			cropper.reset()
-			const ratio = screenAspectRatio.value
+			const ratio = gridAspectRatio.value
 			const imgData = cropper.getImageData()
 			const iw = Math.round(imgData.naturalWidth)
 			const ih = Math.round(imgData.naturalHeight)
@@ -233,7 +242,8 @@
 			// Сохраняем путь для дальнейшего использования
 			imageFile.value = new File([blob], 'image.jpg')
 
-			// Ждем следующего тика для инициализации cropper
+			// Актуальный размер окна для сетки обрезки 1:1
+			updateWindowSize()
 			await nextTick()
 			step.value = 2
 		} catch (e: any) {
@@ -244,7 +254,7 @@
 	}
 
 	async function cropAndSave() {
-		if (!props.collection || !imageUrl.value || !screenSize.value || !cropper) {
+		if (!props.collection || !imageUrl.value || !cropper) {
 			return
 		}
 
@@ -260,8 +270,11 @@
 				width: Math.round(data.width),
 				height: Math.round(data.height)
 			}
+			// На Android — размер экрана, иначе — размер окна приложения (сетка была по нему)
+			const screenW = screenSize.value?.width ?? windowSize.value.width
+			const screenH = screenSize.value?.height ?? windowSize.value.height
 			const itemMeta = {
-				screen: { width: screenSize.value.width, height: screenSize.value.height },
+				screen: { width: screenW, height: screenH },
 				image: { width: Math.round(imgData.naturalWidth), height: Math.round(imgData.naturalHeight) },
 				crop: { ...crop },
 				savedAsCrop: true, // файл уже обрезан по выделенной области
@@ -338,7 +351,7 @@
 </script>
 
 <style scoped>
-/* Обёртка с соотношением сторон экрана телефона — сетка обрезки того же размера */
+/* Обёртка с соотношением сторон окна приложения — сетка обрезки 1:1 с окном */
 .cropper-screen-wrapper {
 	width: 100%;
 	margin: 0 auto;
