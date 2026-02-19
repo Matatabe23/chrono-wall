@@ -19,39 +19,29 @@
 			<div v-if="error" class="text-error">{{ error }}</div>
 		</div>
 
-		<!-- Шаг 2: Обрезка изображения -->
-		<div v-if="step === 2 && imageUrl && screenSize" class="flex flex-col gap-4 h-[70vh] max-h-[70vh] overflow-hidden">
-			<div class="cropper-container">
-				<VuePictureCropper
-					ref="cropperRef"
-					:boxStyle="{
-						width: '100%',
-						height: '100%',
-						backgroundColor: 'transparent',
-					}"
-					:img="imageUrl"
-					:options="{
-						viewMode: 1,
-						dragMode: 'none',
-						movable: false,
-						zoomable: false,
-						zoomOnWheel: false,
-						zoomOnTouch: false,
-						scalable: false,
-						aspectRatio: screenSize.width / screenSize.height,
-						autoCropArea: 0.9,
-						restore: false,
-						guides: true,
-						center: true,
-						highlight: false,
-						cropBoxMovable: true,
-						cropBoxResizable: true,
-						toggleDragModeOnDblclick: false,
-						background: false,
-						responsive: true
-					}"
-					@ready="onCropperReady"
-				/>
+		<!-- Шаг 2: Обрезка изображения. Область обрезки — в той же пропорции, что и экран телефона. -->
+		<div v-if="step === 2 && imageUrl && screenSize" class="flex flex-col gap-4 overflow-hidden">
+			<!-- Обёртка с соотношением сторон экрана: сетка обрезки = размер экрана -->
+			<div
+				class="cropper-screen-wrapper"
+				:style="{
+					aspectRatio: screenAspectRatio,
+					maxHeight: '70vh',
+				}"
+			>
+				<div class="cropper-container">
+					<VuePictureCropper
+						ref="cropperRef"
+						:boxStyle="{
+							width: '100%',
+							height: '100%',
+							backgroundColor: 'transparent',
+						}"
+						:img="imageUrl"
+						:options="cropperOptions"
+						@ready="onCropperReady"
+					/>
+				</div>
 			</div>
 
 			<div class="flex gap-2">
@@ -93,7 +83,7 @@
 	const imageFile = ref<File | null>(null)
 	const selectedPath = ref<string | null>(null)
 	const selectedFileName = ref<string | null>(null)
-	const screenSize = ref<{ width: number; height: number } | null>(null)
+	const screenSize = ref<{ width: number; height: number; xdpi?: number; ydpi?: number } | null>(null)
 	const isPicking = ref(false)
 	const isSaving = ref(false)
 	const error = ref<string | null>(null)
@@ -101,6 +91,42 @@
 	const isOpen = computed({
 		get: () => props.modelValue,
 		set: (v: boolean) => emit('update:modelValue', v)
+	})
+
+	/** Соотношение сторон экрана по физическим дюймам (widthInches/heightInches), чтобы сетка обрезки повторяла телефон. */
+	const screenAspectRatio = computed(() => {
+		const s = screenSize.value
+		if (!s) return 1080 / 1920
+		const { width, height, xdpi, ydpi } = s
+		if (xdpi != null && ydpi != null && xdpi > 0 && ydpi > 0) {
+			// Ширина и высота в дюймах: width/xdpi, height/ydpi → aspect = (width*ydpi)/(height*xdpi)
+			return (width * ydpi) / (height * xdpi)
+		}
+		return width / height
+	})
+
+	const cropperOptions = computed(() => {
+		if (!screenSize.value) return {}
+		return {
+			viewMode: 1,
+			dragMode: 'none' as const,
+			movable: false,
+			zoomable: false,
+			zoomOnWheel: false,
+			zoomOnTouch: false,
+			scalable: false,
+			aspectRatio: screenAspectRatio.value,
+			autoCropArea: 0.9,
+			restore: false,
+			guides: true,
+			center: true,
+			highlight: false,
+			cropBoxMovable: true,
+			cropBoxResizable: true,
+			toggleDragModeOnDblclick: false,
+			background: false,
+			responsive: true,
+		}
 	})
 
 	watch(() => props.modelValue, async (newVal) => {
@@ -131,7 +157,7 @@
 			if (!screenSize.value) return
 			// Сброс до состояния "вписать изображение целиком в контейнер"
 			cropper.reset()
-			const ratio = screenSize.value.width / screenSize.value.height
+			const ratio = screenAspectRatio.value
 			const imgData = cropper.getImageData()
 			const iw = Math.round(imgData.naturalWidth)
 			const ih = Math.round(imgData.naturalHeight)
@@ -289,10 +315,19 @@
 </script>
 
 <style scoped>
-.cropper-container {
+/* Обёртка с соотношением сторон экрана телефона — сетка обрезки того же размера */
+.cropper-screen-wrapper {
+	width: 100%;
+	margin: 0 auto;
 	position: relative;
-	flex: 1 1 auto;
 	min-height: 0;
+}
+
+.cropper-container {
+	position: absolute;
+	inset: 0;
+	width: 100%;
+	height: 100%;
 	overflow: hidden;
 }
 </style>

@@ -813,9 +813,9 @@ fn delete_app_file(app: tauri::AppHandle, path: String) -> Result<(), String> {
   Ok(())
 }
 
-/// Получить размер экрана Android
+/// Получить размер экрана Android: ширина/высота в пикселях и xdpi/ydpi для расчёта физических дюймов.
 #[cfg(target_os = "android")]
-fn get_screen_size_android() -> Result<(i32, i32), String> {
+fn get_screen_size_android() -> Result<(i32, i32, f32, f32), String> {
   let ctx = android_context();
   let vm = unsafe {
     jni::JavaVM::from_raw(ctx.vm() as *mut _).map_err(|e| format!("JavaVM error: {}", e))?
@@ -825,7 +825,6 @@ fn get_screen_size_android() -> Result<(i32, i32), String> {
     .map_err(|e| format!("JNI attach thread: {}", e))?;
   let context = unsafe { JObject::from_raw(ctx.context() as *mut _) };
 
-  // DisplayMetrics metrics = context.getResources().getDisplayMetrics()
   let _resources_class = env
     .find_class("android/content/Context")
     .map_err(|e| format!("Find Context: {}", e))?;
@@ -856,25 +855,36 @@ fn get_screen_size_android() -> Result<(i32, i32), String> {
     )
     .map_err(|e| format!("getDisplayMetrics: {}", e))?;
 
-  // int width = metrics.widthPixels
   let width = env
     .get_field(&metrics, "widthPixels", "I")
     .map_err(|e| format!("get widthPixels: {}", e))?
     .i()
     .map_err(|e| format!("Get width: {}", e))?;
 
-  // int height = metrics.heightPixels
   let height = env
     .get_field(&metrics, "heightPixels", "I")
     .map_err(|e| format!("get heightPixels: {}", e))?
     .i()
     .map_err(|e| format!("Get height: {}", e))?;
 
-  Ok((width, height))
+  // Физические дюймы: xdpi, ydpi (пикселей на дюйм по осям) — для точного соотношения сторон экрана
+  let xdpi = env
+    .get_field(&metrics, "xdpi", "F")
+    .map_err(|e| format!("get xdpi: {}", e))?
+    .f()
+    .map_err(|e| format!("Get xdpi: {}", e))?;
+
+  let ydpi = env
+    .get_field(&metrics, "ydpi", "F")
+    .map_err(|e| format!("get ydpi: {}", e))?
+    .f()
+    .map_err(|e| format!("Get ydpi: {}", e))?;
+
+  Ok((width, height, xdpi, ydpi))
 }
 
 #[tauri::command]
-fn get_screen_size() -> Result<(i32, i32), String> {
+fn get_screen_size() -> Result<(i32, i32, f32, f32), String> {
   #[cfg(target_os = "android")]
   {
     return get_screen_size_android();

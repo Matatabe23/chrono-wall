@@ -148,10 +148,16 @@ export async function listCollections(): Promise<
 
 /**
  * Получить размер экрана устройства (Android).
+ * width, height — в пикселях; xdpi, ydpi — пикселей на дюйм по осям (для соотношения сторон по физическим дюймам).
  */
-export async function getScreenSize(): Promise<{ width: number; height: number }> {
-	const [width, height] = await invoke<[number, number]>('get_screen_size');
-	return { width, height };
+export async function getScreenSize(): Promise<{
+	width: number;
+	height: number;
+	xdpi?: number;
+	ydpi?: number;
+}> {
+	const [width, height, xdpi, ydpi] = await invoke<[number, number, number, number]>('get_screen_size');
+	return { width, height, xdpi, ydpi };
 }
 
 export async function listCollectionFiles(collectionId: string): Promise<string[]> {
