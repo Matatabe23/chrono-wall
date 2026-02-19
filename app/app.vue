@@ -41,6 +41,10 @@
 			const savedTheme = localStorage.getItem('theme');
 			if (savedTheme === 'dark') appStore.isDark = true;
 			if (savedTheme === 'light') appStore.isDark = false;
+			// Отложенное восстановление ротации, чтобы Activity успела отрисоваться (избегаем вылета на Android)
+			setTimeout(() => {
+				appStore.restoreRotationIfNeeded().catch(() => {});
+			}, 500);
 		}
 
 		isLoading.value = false;

@@ -120,7 +120,8 @@
 	const settingsOpen = ref(false);
 	const appStore = useAppStore();
 
-	const durations = [1, 5, 10, 15, 30, 60, 120, 180, 300, 600, 900, 1440];
+	// Минимальный интервал смены обоев — 15 минут
+	const durations = [15, 30, 60, 120, 180, 300, 600, 900, 1440];
 	function fmtLabel(m) {
 		if (m < 60) return `${m} мин`;
 		const h = Math.round(m / 60);

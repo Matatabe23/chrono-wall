@@ -156,3 +156,52 @@ export async function listCollectionFiles(collectionId: string): Promise<string[
 export async function deleteCollection(collectionId: string): Promise<void> {
 	await invoke('delete_collection', { collectionId });
 }
+
+/** Запустить фоновый сервис смены обоев (Android). Работает 24/7 при закрытом приложении. */
+export async function startWallpaperRotationService(params: {
+	intervalMinutes: number;
+	target: 'both' | 'lock' | 'home';
+	rotationIndex: number;
+	lastChangeAt: number;
+	sequence: string[];
+}): Promise<void> {
+	await invoke('start_wallpaper_rotation_service', {
+		intervalMinutes: Math.max(15, params.intervalMinutes),
+		target: params.target,
+		rotationIndex: params.rotationIndex,
+		lastChangeAt: params.lastChangeAt,
+		sequence: params.sequence
+	});
+}
+
+/** Остановить фоновый сервис смены обоев (Android). */
+export async function stopWallpaperRotationService(): Promise<void> {
+	await invoke('stop_wallpaper_rotation_service');
+}
+
+/** Обновить состояние ротации в prefs (Android), чтобы сервис и таймер были в синхронизации. */
+export async function updateRotationPrefs(params: {
+	intervalMinutes: number;
+	target: 'both' | 'lock' | 'home';
+	rotationIndex: number;
+	lastChangeAt: number;
+	sequence: string[];
+}): Promise<void> {
+	await invoke('update_rotation_prefs', {
+		intervalMinutes: params.intervalMinutes,
+		target: params.target,
+		rotationIndex: params.rotationIndex,
+		lastChangeAt: params.lastChangeAt,
+		sequence: params.sequence
+	});
+}
+
+/** Получить текущее состояние ротации из prefs (Android). Для синхронизации при открытии приложения. */
+export async function getWallpaperRotationState(): Promise<[number, number] | null> {
+	try {
+		return await invoke<[number, number]>('get_wallpaper_rotation_state');
+	} catch {
+		return null;
+	}
+}
+

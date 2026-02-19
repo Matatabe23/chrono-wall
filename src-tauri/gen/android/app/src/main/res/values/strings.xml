@@ -1,4 +1,7 @@
 <resources>
     <string name="app_name">Chrono Wall</string>
     <string name="main_activity_title">Chrono Wall</string>
+    <string name="wallpaper_service_channel_name">Смена обоев</string>
+    <string name="wallpaper_service_title">Chrono Wall</string>
+    <string name="wallpaper_service_text">Обои меняются по расписанию</string>
 </resources>

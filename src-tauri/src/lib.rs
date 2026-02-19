@@ -291,6 +291,354 @@ fn set_device_wallpaper_target(app: tauri::AppHandle, path: String, target: Stri
     Err("Only supported on Android".to_string())
   }
 }
+
+#[cfg(target_os = "android")]
+fn start_wallpaper_rotation_service_android(
+  interval_minutes: u32,
+  target: String,
+  rotation_index: u32,
+  last_change_at: i64,
+  sequence: Vec<String>,
+) -> Result<(), String> {
+  use jni::objects::JValue;
+  const PREFS_NAME: &str = "chrono_wall_rotation";
+  const DELIM: char = '\u{0000}';
+  let sequence_str = sequence.join(DELIM.to_string().as_str());
+
+  let ctx = ndk_context::android_context();
+  let vm = unsafe {
+    jni::JavaVM::from_raw(ctx.vm() as *mut _).map_err(|e| format!("JavaVM: {}", e))?
+  };
+  let mut env = vm.attach_current_thread().map_err(|e| format!("JNI attach: {}", e))?;
+  let context = unsafe { jni::objects::JObject::from_raw(ctx.context() as *mut _) };
+
+  let _prefs_class = env.find_class("android/content/Context").map_err(|e| format!("Find Context: {}", e))?;
+  let mode_private = 0i32;
+  let prefs_name_j = env.new_string(PREFS_NAME).map_err(|e| format!("new_string prefs: {}", e))?;
+  let prefs = env
+    .call_method(
+      &context,
+      "getSharedPreferences",
+      "(Ljava/lang/String;I)Landroid/content/SharedPreferences;",
+      &[JValue::Object(&prefs_name_j).into(), JValue::Int(mode_private).into()],
+    )
+    .map_err(|e| format!("getSharedPreferences: {}", e))?
+    .l()
+    .map_err(|e| format!("SharedPreferences: {}", e))?;
+
+  let _editor_class = env.find_class("android/content/SharedPreferences$Editor").map_err(|e| format!("Find Editor: {}", e))?;
+  let editor = env
+    .call_method(&prefs, "edit", "()Landroid/content/SharedPreferences$Editor;", &[])
+    .map_err(|e| format!("edit: {}", e))?
+    .l()
+    .map_err(|e| format!("Editor: {}", e))?;
+
+  let running_j = env.new_string("running").map_err(|e| format!("key running: {}", e))?;
+  env.call_method(&editor, "putBoolean", "(Ljava/lang/String;Z)Landroid/content/SharedPreferences$Editor;", &[
+    JValue::Object(&running_j).into(),
+    JValue::Bool(1).into(),
+  ])
+  .map_err(|e| format!("putBoolean: {}", e))?;
+
+  let key_interval = env.new_string("interval_minutes").map_err(|e| format!("key interval: {}", e))?;
+  env.call_method(&editor, "putInt", "(Ljava/lang/String;I)Landroid/content/SharedPreferences$Editor;", &[
+    JValue::Object(&key_interval).into(),
+    JValue::Int(interval_minutes as i32).into(),
+  ])
+  .map_err(|e| format!("putInt interval: {}", e))?;
+
+  let key_target = env.new_string("target").map_err(|e| format!("key target: {}", e))?;
+  let target_j = env.new_string(&target).map_err(|e| format!("target str: {}", e))?;
+  env.call_method(&editor, "putString", "(Ljava/lang/String;Ljava/lang/String;)Landroid/content/SharedPreferences$Editor;", &[
+    JValue::Object(&key_target).into(),
+    JValue::Object(&target_j).into(),
+  ])
+  .map_err(|e| format!("putString target: {}", e))?;
+
+  let key_idx = env.new_string("rotation_index").map_err(|e| format!("key idx: {}", e))?;
+  env.call_method(&editor, "putInt", "(Ljava/lang/String;I)Landroid/content/SharedPreferences$Editor;", &[
+    JValue::Object(&key_idx).into(),
+    JValue::Int(rotation_index as i32).into(),
+  ])
+  .map_err(|e| format!("putInt idx: {}", e))?;
+
+  let key_last = env.new_string("last_change_at").map_err(|e| format!("key last: {}", e))?;
+  env.call_method(&editor, "putLong", "(Ljava/lang/String;J)Landroid/content/SharedPreferences$Editor;", &[
+    JValue::Object(&key_last).into(),
+    JValue::Long(last_change_at).into(),
+  ])
+  .map_err(|e| format!("putLong: {}", e))?;
+
+  let key_seq = env.new_string("sequence").map_err(|e| format!("key sequence: {}", e))?;
+  let seq_j = env.new_string(&sequence_str).map_err(|e| format!("sequence str: {}", e))?;
+  env.call_method(&editor, "putString", "(Ljava/lang/String;Ljava/lang/String;)Landroid/content/SharedPreferences$Editor;", &[
+    JValue::Object(&key_seq).into(),
+    JValue::Object(&seq_j).into(),
+  ])
+  .map_err(|e| format!("putString sequence: {}", e))?;
+
+  env.call_method(&editor, "apply", "()V", &[]).map_err(|e| format!("apply: {}", e))?;
+
+  let intent_class = env.find_class("android/content/Intent").map_err(|e| format!("Find Intent: {}", e))?;
+  let service_class = env.find_class("ru/qugor/chronowall/WallpaperRotationService").map_err(|e| format!("Find Service: {}", e))?;
+  let intent = env
+    .new_object(intent_class, "(Landroid/content/Context;Ljava/lang/Class;)V", &[
+      JValue::Object(&context).into(),
+      JValue::Object(&service_class).into(),
+    ])
+    .map_err(|e| format!("New Intent: {}", e))?;
+
+  let extra_key = env.new_string("schedule_only").map_err(|e| format!("extra key: {}", e))?;
+  env.call_method(&intent, "putExtra", "(Ljava/lang/String;Z)Landroid/content/Intent;", &[
+    JValue::Object(&extra_key).into(),
+    JValue::Bool(1).into(),
+  ])
+  .map_err(|e| format!("putExtra: {}", e))?;
+
+  let context_class = env.get_object_class(&context).map_err(|e| format!("get_object_class: {}", e))?;
+  let start_foreground = env.get_method_id(&context_class, "startForegroundService", "(Landroid/content/Intent;)Landroid/content/ComponentName;");
+  if start_foreground.is_ok() {
+    env.call_method(&context, "startForegroundService", "(Landroid/content/Intent;)Landroid/content/ComponentName;", &[JValue::Object(&intent).into()])
+      .map_err(|e| format!("startForegroundService: {}", e))?;
+  } else {
+    env.call_method(&context, "startService", "(Landroid/content/Intent;)Landroid/content/ComponentName;", &[JValue::Object(&intent).into()])
+      .map_err(|e| format!("startService: {}", e))?;
+  }
+  Ok(())
+}
+
+#[cfg(target_os = "android")]
+fn stop_wallpaper_rotation_service_android() -> Result<(), String> {
+  use jni::objects::JValue;
+  const PREFS_NAME: &str = "chrono_wall_rotation";
+
+  let ctx = ndk_context::android_context();
+  let vm = unsafe {
+    jni::JavaVM::from_raw(ctx.vm() as *mut _).map_err(|e| format!("JavaVM: {}", e))?
+  };
+  let mut env = vm.attach_current_thread().map_err(|e| format!("JNI attach: {}", e))?;
+  let context = unsafe { jni::objects::JObject::from_raw(ctx.context() as *mut _) };
+
+  let prefs_name_j = env.new_string(PREFS_NAME).map_err(|e| format!("new_string: {}", e))?;
+  let prefs = env
+    .call_method(
+      &context,
+      "getSharedPreferences",
+      "(Ljava/lang/String;I)Landroid/content/SharedPreferences;",
+      &[JValue::Object(&prefs_name_j).into(), JValue::Int(0i32).into()],
+    )
+    .map_err(|e| format!("getSharedPreferences: {}", e))?
+    .l()
+    .map_err(|e| format!("SharedPreferences: {}", e))?;
+
+  let editor = env
+    .call_method(&prefs, "edit", "()Landroid/content/SharedPreferences$Editor;", &[])
+    .map_err(|e| format!("edit: {}", e))?
+    .l()
+    .map_err(|e| format!("Editor: {}", e))?;
+
+  let running_j = env.new_string("running").map_err(|e| format!("key: {}", e))?;
+  env.call_method(&editor, "putBoolean", "(Ljava/lang/String;Z)Landroid/content/SharedPreferences$Editor;", &[
+    JValue::Object(&running_j).into(),
+    JValue::Bool(0).into(),
+  ])
+  .map_err(|e| format!("putBoolean: {}", e))?;
+  env.call_method(&editor, "apply", "()V", &[]).map_err(|e| format!("apply: {}", e))?;
+
+  let intent_class = env.find_class("android/content/Intent").map_err(|e| format!("Find Intent: {}", e))?;
+  let service_class = env.find_class("ru/qugor/chronowall/WallpaperRotationService").map_err(|e| format!("Find Service: {}", e))?;
+  let intent = env
+    .new_object(intent_class, "(Landroid/content/Context;Ljava/lang/Class;)V", &[
+      JValue::Object(&context).into(),
+      JValue::Object(&service_class).into(),
+    ])
+    .map_err(|e| format!("New Intent: {}", e))?;
+  env.call_method(&context, "stopService", "(Landroid/content/Intent;)Z", &[JValue::Object(&intent).into()])
+    .map_err(|e| format!("stopService: {}", e))?;
+  Ok(())
+}
+
+#[cfg(target_os = "android")]
+fn get_wallpaper_rotation_state_android() -> Result<(i32, i64), String> {
+  use jni::objects::JValue;
+  const PREFS_NAME: &str = "chrono_wall_rotation";
+
+  let ctx = ndk_context::android_context();
+  let vm = unsafe {
+    jni::JavaVM::from_raw(ctx.vm() as *mut _).map_err(|e| format!("JavaVM: {}", e))?
+  };
+  let mut env = vm.attach_current_thread().map_err(|e| format!("JNI attach: {}", e))?;
+  let context = unsafe { jni::objects::JObject::from_raw(ctx.context() as *mut _) };
+
+  let prefs_name_j = env.new_string(PREFS_NAME).map_err(|e| format!("new_string: {}", e))?;
+  let prefs = env
+    .call_method(
+      &context,
+      "getSharedPreferences",
+      "(Ljava/lang/String;I)Landroid/content/SharedPreferences;",
+      &[JValue::Object(&prefs_name_j).into(), JValue::Int(0i32).into()],
+    )
+    .map_err(|e| format!("getSharedPreferences: {}", e))?
+    .l()
+    .map_err(|e| format!("SharedPreferences: {}", e))?;
+
+  let key_idx = env.new_string("rotation_index").map_err(|e| format!("key: {}", e))?;
+  let idx = env
+    .call_method(&prefs, "getInt", "(Ljava/lang/String;I)I", &[JValue::Object(&key_idx).into(), JValue::Int(0).into()])
+    .map_err(|e| format!("getInt: {}", e))?
+    .i()
+    .map_err(|e| format!("rotation_index: {}", e))?;
+
+  let key_last = env.new_string("last_change_at").map_err(|e| format!("key: {}", e))?;
+  let last = env
+    .call_method(&prefs, "getLong", "(Ljava/lang/String;J)J", &[JValue::Object(&key_last).into(), JValue::Long(0).into()])
+    .map_err(|e| format!("getLong: {}", e))?
+    .j()
+    .map_err(|e| format!("last_change_at: {}", e))?;
+
+  Ok((idx, last))
+}
+
+#[cfg(target_os = "android")]
+fn update_rotation_prefs_android(
+  interval_minutes: u32,
+  target: String,
+  rotation_index: u32,
+  last_change_at: i64,
+  sequence: Vec<String>,
+) -> Result<(), String> {
+  use jni::objects::JValue;
+  const PREFS_NAME: &str = "chrono_wall_rotation";
+  const DELIM: char = '\u{0000}';
+  let sequence_str = sequence.join(DELIM.to_string().as_str());
+
+  let ctx = ndk_context::android_context();
+  let vm = unsafe {
+    jni::JavaVM::from_raw(ctx.vm() as *mut _).map_err(|e| format!("JavaVM: {}", e))?
+  };
+  let mut env = vm.attach_current_thread().map_err(|e| format!("JNI attach: {}", e))?;
+  let context = unsafe { jni::objects::JObject::from_raw(ctx.context() as *mut _) };
+
+  let prefs_name_j = env.new_string(PREFS_NAME).map_err(|e| format!("new_string: {}", e))?;
+  let prefs = env
+    .call_method(
+      &context,
+      "getSharedPreferences",
+      "(Ljava/lang/String;I)Landroid/content/SharedPreferences;",
+      &[JValue::Object(&prefs_name_j).into(), JValue::Int(0i32).into()],
+    )
+    .map_err(|e| format!("getSharedPreferences: {}", e))?
+    .l()
+    .map_err(|e| format!("SharedPreferences: {}", e))?;
+
+  let editor = env
+    .call_method(&prefs, "edit", "()Landroid/content/SharedPreferences$Editor;", &[])
+    .map_err(|e| format!("edit: {}", e))?
+    .l()
+    .map_err(|e| format!("Editor: {}", e))?;
+
+  let key_interval = env.new_string("interval_minutes").map_err(|e| format!("key: {}", e))?;
+  env.call_method(&editor, "putInt", "(Ljava/lang/String;I)Landroid/content/SharedPreferences$Editor;", &[
+    JValue::Object(&key_interval).into(),
+    JValue::Int(interval_minutes as i32).into(),
+  ])
+  .map_err(|e| format!("putInt: {}", e))?;
+
+  let key_target = env.new_string("target").map_err(|e| format!("key: {}", e))?;
+  let target_j = env.new_string(&target).map_err(|e| format!("target: {}", e))?;
+  env.call_method(&editor, "putString", "(Ljava/lang/String;Ljava/lang/String;)Landroid/content/SharedPreferences$Editor;", &[
+    JValue::Object(&key_target).into(),
+    JValue::Object(&target_j).into(),
+  ])
+  .map_err(|e| format!("putString: {}", e))?;
+
+  let key_idx = env.new_string("rotation_index").map_err(|e| format!("key: {}", e))?;
+  env.call_method(&editor, "putInt", "(Ljava/lang/String;I)Landroid/content/SharedPreferences$Editor;", &[
+    JValue::Object(&key_idx).into(),
+    JValue::Int(rotation_index as i32).into(),
+  ])
+  .map_err(|e| format!("putInt: {}", e))?;
+
+  let key_last = env.new_string("last_change_at").map_err(|e| format!("key: {}", e))?;
+  env.call_method(&editor, "putLong", "(Ljava/lang/String;J)Landroid/content/SharedPreferences$Editor;", &[
+    JValue::Object(&key_last).into(),
+    JValue::Long(last_change_at).into(),
+  ])
+  .map_err(|e| format!("putLong: {}", e))?;
+
+  let key_seq = env.new_string("sequence").map_err(|e| format!("key: {}", e))?;
+  let seq_j = env.new_string(&sequence_str).map_err(|e| format!("sequence: {}", e))?;
+  env.call_method(&editor, "putString", "(Ljava/lang/String;Ljava/lang/String;)Landroid/content/SharedPreferences$Editor;", &[
+    JValue::Object(&key_seq).into(),
+    JValue::Object(&seq_j).into(),
+  ])
+  .map_err(|e| format!("putString: {}", e))?;
+
+  env.call_method(&editor, "apply", "()V", &[]).map_err(|e| format!("apply: {}", e))?;
+  Ok(())
+}
+
+#[tauri::command]
+fn start_wallpaper_rotation_service(
+  interval_minutes: u32,
+  target: String,
+  rotation_index: u32,
+  last_change_at: i64,
+  sequence: Vec<String>,
+) -> Result<(), String> {
+  #[cfg(target_os = "android")]
+  {
+    start_wallpaper_rotation_service_android(interval_minutes, target, rotation_index, last_change_at, sequence)
+  }
+  #[cfg(not(target_os = "android"))]
+  {
+    let _ = (interval_minutes, target, rotation_index, last_change_at, sequence);
+    Err("Only supported on Android".to_string())
+  }
+}
+
+#[tauri::command]
+fn stop_wallpaper_rotation_service() -> Result<(), String> {
+  #[cfg(target_os = "android")]
+  {
+    stop_wallpaper_rotation_service_android()
+  }
+  #[cfg(not(target_os = "android"))]
+  {
+    Err("Only supported on Android".to_string())
+  }
+}
+
+#[tauri::command]
+fn get_wallpaper_rotation_state() -> Result<(i32, i64), String> {
+  #[cfg(target_os = "android")]
+  {
+    get_wallpaper_rotation_state_android()
+  }
+  #[cfg(not(target_os = "android"))]
+  {
+    Err("Only supported on Android".to_string())
+  }
+}
+
+#[tauri::command]
+fn update_rotation_prefs(
+  interval_minutes: u32,
+  target: String,
+  rotation_index: u32,
+  last_change_at: i64,
+  sequence: Vec<String>,
+) -> Result<(), String> {
+  #[cfg(target_os = "android")]
+  {
+    update_rotation_prefs_android(interval_minutes, target, rotation_index, last_change_at, sequence)
+  }
+  #[cfg(not(target_os = "android"))]
+  {
+    let _ = (interval_minutes, target, rotation_index, last_change_at, sequence);
+    Ok(())
+  }
+}
 /// Папка конкретной коллекции: base/collections/{collection_id}
 fn collection_dir(app: &tauri::AppHandle, collection_id: &str) -> Result<PathBuf, String> {
   Ok(files_base_dir(app)?.join("collections").join(collection_id))
@@ -473,7 +821,7 @@ fn get_screen_size_android() -> Result<(i32, i32), String> {
     .map_err(|e| format!("Find Context: {}", e))?;
   let resources = env
     .call_method(
-      context,
+      &context,
       "getResources",
       "()Landroid/content/res/Resources;",
       &[],
@@ -679,6 +1027,10 @@ pub fn run() {
     get_screen_size,
     list_collection_files,
     delete_collection,
+    start_wallpaper_rotation_service,
+    stop_wallpaper_rotation_service,
+    update_rotation_prefs,
+    get_wallpaper_rotation_state,
   ])
     .setup(|app| {
       if cfg!(debug_assertions) {

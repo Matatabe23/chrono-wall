@@ -2,10 +2,18 @@ import { defineStore } from 'pinia';
 import { useTheme } from 'vuetify';
 import { computed } from 'vue';
 import type { IUserData } from '~/types/appStore';
-import { listCollectionFiles, readAppFile, setDeviceWallpaper } from '~/helpers/tauri/file';
+import {
+	listCollectionFiles,
+	readAppFile,
+	setDeviceWallpaper,
+	startWallpaperRotationService,
+	stopWallpaperRotationService,
+	updateRotationPrefs
+} from '~/helpers/tauri/file';
 
 export const useAppStore = defineStore('app', () => {
 	const userDark = ref(false);
+	const MIN_INTERVAL_MINUTES = 15;
 	const changeIntervalMinutes = ref(60);
 	const wallpaperTarget = ref<'both' | 'lock' | 'home'>('both');
 	const rotationMode = ref<'queue' | 'random'>('queue');
@@ -33,7 +41,12 @@ export const useAppStore = defineStore('app', () => {
 		const saved = localStorage.getItem('changeIntervalMinutes');
 		if (saved) {
 			const n = Number(saved);
-			if (!Number.isNaN(n) && n > 0) changeIntervalMinutes.value = n;
+			if (!Number.isNaN(n) && n >= MIN_INTERVAL_MINUTES) {
+				changeIntervalMinutes.value = n;
+			} else if (n > 0 && n < MIN_INTERVAL_MINUTES) {
+				changeIntervalMinutes.value = MIN_INTERVAL_MINUTES;
+				localStorage.setItem('changeIntervalMinutes', String(MIN_INTERVAL_MINUTES));
+			}
 		}
 		const savedTarget = localStorage.getItem('wallpaperTarget');
 		if (savedTarget === 'both' || savedTarget === 'lock' || savedTarget === 'home') {
@@ -54,9 +67,10 @@ export const useAppStore = defineStore('app', () => {
 	const intervalMinutes = computed({
 		get: () => changeIntervalMinutes.value,
 		set: (val: number) => {
-			changeIntervalMinutes.value = val;
+			const clamped = Math.max(MIN_INTERVAL_MINUTES, val);
+			changeIntervalMinutes.value = clamped;
 			if (typeof window !== 'undefined') {
-				localStorage.setItem('changeIntervalMinutes', String(val));
+				localStorage.setItem('changeIntervalMinutes', String(clamped));
 			}
 		}
 	});
@@ -158,7 +172,7 @@ export const useAppStore = defineStore('app', () => {
 	function scheduleNext() {
 		clearTimer();
 		if (!isRotating.value || sequence.value.length === 0) return;
-		const intervalMs = Math.max(1, intervalMinutes.value) * 60 * 1000;
+		const intervalMs = Math.max(MIN_INTERVAL_MINUTES, intervalMinutes.value) * 60 * 1000;
 		const now = Date.now();
 		const nextAt = (lastChangeAt.value ?? now) + intervalMs;
 		const delay = Math.max(0, nextAt - now);
@@ -178,6 +192,15 @@ export const useAppStore = defineStore('app', () => {
 				await applyWallpaper(nextPath);
 				lastChangeAt.value = Date.now();
 				persistRotation();
+				try {
+					await updateRotationPrefs({
+						intervalMinutes: Math.max(MIN_INTERVAL_MINUTES, intervalMinutes.value),
+						target: wallpaperTarget.value,
+						rotationIndex: currentIndex.value,
+						lastChangeAt: lastChangeAt.value ?? 0,
+						sequence: sequence.value
+					});
+				} catch (_) {}
 			} finally {
 				scheduleNext();
 			}
@@ -198,12 +221,24 @@ export const useAppStore = defineStore('app', () => {
 		lastChangeAt.value = Date.now();
 		persistRotation();
 		scheduleNext();
+		try {
+			await startWallpaperRotationService({
+				intervalMinutes: Math.max(MIN_INTERVAL_MINUTES, intervalMinutes.value),
+				target: wallpaperTarget.value,
+				rotationIndex: currentIndex.value,
+				lastChangeAt: lastChangeAt.value ?? Date.now(),
+				sequence: sequence.value
+			});
+		} catch (_) {}
 	}
 
 	function pauseRotation() {
 		clearTimer();
 		isRotating.value = false;
 		persistRotation();
+		try {
+			stopWallpaperRotationService();
+		} catch (_) {}
 	}
 
 	function resumeRotation() {
@@ -217,6 +252,33 @@ export const useAppStore = defineStore('app', () => {
 		return isRotating.value && activeCollectionId.value === id;
 	}
 
+	/** Восстановить ротацию обоев при запуске приложения из сохранённых настроек (коллекция была включена). */
+	async function restoreRotationIfNeeded() {
+		if (typeof window === 'undefined') return;
+		const id = activeCollectionId.value;
+		if (!id || isRotating.value) return;
+		// Индекс и время берём только из localStorage, без вызова нативного кода при старте (чтобы не вылетать на Android)
+		try {
+			sequence.value = await loadSequenceForCollection(id);
+		} catch (_) {
+			return;
+		}
+		if (sequence.value.length === 0) return;
+		isRotating.value = true;
+		persistRotation();
+		scheduleNext();
+		// Фоновый сервис запускаем с задержкой, чтобы Activity была уже стабильна
+		setTimeout(() => {
+			startWallpaperRotationService({
+				intervalMinutes: Math.max(MIN_INTERVAL_MINUTES, intervalMinutes.value),
+				target: wallpaperTarget.value,
+				rotationIndex: currentIndex.value,
+				lastChangeAt: lastChangeAt.value ?? Date.now(),
+				sequence: sequence.value
+			}).catch(() => {});
+		}, 2000);
+	}
+
 	return {
 		isDark,
 		intervalMinutes,
@@ -227,6 +289,7 @@ export const useAppStore = defineStore('app', () => {
 		startCollection,
 		pauseRotation,
 		resumeRotation,
-		isActiveCollection
+		isActiveCollection,
+		restoreRotationIfNeeded
 	};
 });
