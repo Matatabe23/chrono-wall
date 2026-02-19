@@ -278,7 +278,12 @@
 		}
 	}
 
-	onMounted(() => {
-		loadCollections();
+	onMounted(async () => {
+		await loadCollections();
+		// Восстанавливаем ротацию после загрузки коллекций (если была активна)
+		// Делаем это с задержкой, чтобы избежать вылета при открытии приложения
+		setTimeout(() => {
+			appStore.restoreRotationIfNeeded().catch(() => {});
+		}, 1000);
 	});
 </script>

@@ -41,10 +41,8 @@
 			const savedTheme = localStorage.getItem('theme');
 			if (savedTheme === 'dark') appStore.isDark = true;
 			if (savedTheme === 'light') appStore.isDark = false;
-			// Отложенное восстановление ротации, чтобы Activity успела отрисоваться (избегаем вылета на Android)
-			setTimeout(() => {
-				appStore.restoreRotationIfNeeded().catch(() => {});
-			}, 500);
+			// Восстановление ротации отключено при старте приложения, чтобы избежать вылета на Android
+			// Восстановление произойдёт автоматически при открытии страницы коллекций
 		}
 
 		isLoading.value = false;

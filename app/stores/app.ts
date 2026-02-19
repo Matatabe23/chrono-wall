@@ -257,26 +257,14 @@ export const useAppStore = defineStore('app', () => {
 		if (typeof window === 'undefined') return;
 		const id = activeCollectionId.value;
 		if (!id || isRotating.value) return;
-		// Индекс и время берём только из localStorage, без вызова нативного кода при старте (чтобы не вылетать на Android)
-		try {
-			sequence.value = await loadSequenceForCollection(id);
-		} catch (_) {
-			return;
-		}
-		if (sequence.value.length === 0) return;
+		// Восстанавливаем только состояние из localStorage, без нативных вызовов
+		// Последовательность загрузится позже, когда пользователь взаимодействует с коллекцией
+		// или когда таймер попытается сработать (там будет проверка и загрузка)
 		isRotating.value = true;
 		persistRotation();
-		scheduleNext();
-		// Фоновый сервис запускаем с задержкой, чтобы Activity была уже стабильна
-		setTimeout(() => {
-			startWallpaperRotationService({
-				intervalMinutes: Math.max(MIN_INTERVAL_MINUTES, intervalMinutes.value),
-				target: wallpaperTarget.value,
-				rotationIndex: currentIndex.value,
-				lastChangeAt: lastChangeAt.value ?? Date.now(),
-				sequence: sequence.value
-			}).catch(() => {});
-		}, 2000);
+		// Не запускаем scheduleNext() пока нет последовательности - она загрузится при первом взаимодействии
+		// Фоновый сервис НЕ запускаем при восстановлении - только при явном старте пользователем
+		// Это предотвращает вылет при открытии приложения
 	}
 
 	return {
