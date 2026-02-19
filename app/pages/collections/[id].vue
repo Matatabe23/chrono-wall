@@ -128,10 +128,12 @@
 		deleteAppFile,
 		saveFileToCollection
 	} from '~/helpers/tauri/file';
+	import { useAppStore } from '~/stores/app';
 	import AddPhotoToCollectionDialog from '~/components/AddPhotoToCollectionDialog.vue';
 	import UniversalModel from '~/components/UniversalModel.vue';
 
 	const route = useRoute();
+	const appStore = useAppStore();
 	const router = useRouter();
 	const id = route.params.id as string;
 	const images = ref<Array<{ path: string; url: string; width?: number; height?: number }>>([]);
@@ -247,6 +249,10 @@
 
 	async function onPhotoAdded() {
 		showAddDialog.value = false;
+		if (appStore.isActiveCollection(id)) {
+			await appStore.pauseRotation();
+			appStore.setRotationStoppedWarning('Ротация отключена: в коллекцию добавлено фото. Запустите коллекцию заново.');
+		}
 		currentPage.value = 1;
 		await loadImages();
 	}

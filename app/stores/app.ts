@@ -19,6 +19,8 @@ export const useAppStore = defineStore('app', () => {
 	const rotationMode = ref<'queue' | 'random'>('queue');
 	const activeCollectionId = ref<string | null>(null);
 	const isRotating = ref(false);
+	/** Сообщение для предупреждения на главной (ротация отключена из‑за смены настроек или добавления фото). */
+	const rotationStoppedWarning = ref<string | null>(null);
 	const currentIndex = ref(0);
 	const sequence = ref<string[]>([]);
 	const lastChangeAt = ref<number | null>(null);
@@ -212,6 +214,7 @@ export const useAppStore = defineStore('app', () => {
 
 	async function startCollection(id: string) {
 		clearTimer();
+		rotationStoppedWarning.value = null;
 		activeCollectionId.value = id;
 		isRotating.value = true;
 		currentIndex.value = 0;
@@ -286,6 +289,10 @@ export const useAppStore = defineStore('app', () => {
 		return isRotating.value && activeCollectionId.value === id;
 	}
 
+	function setRotationStoppedWarning(message: string | null) {
+		rotationStoppedWarning.value = message;
+	}
+
 	/** Восстановить ротацию обоев при запуске приложения из сохранённых настроек (коллекция была включена). */
 	async function restoreRotationIfNeeded() {
 		if (typeof window === 'undefined') return;
@@ -308,6 +315,8 @@ export const useAppStore = defineStore('app', () => {
 		rotationMode: rotationModeSetting,
 		activeCollectionId,
 		isRotating,
+		rotationStoppedWarning,
+		setRotationStoppedWarning,
 		startCollection,
 		pauseRotation,
 		resumeRotation,

@@ -1,6 +1,16 @@
 <template>
 	<v-container class="py-6">
 		<div class="flex flex-col gap-6">
+			<v-alert
+				v-if="appStore.rotationStoppedWarning"
+				type="warning"
+				variant="tonal"
+				closable
+				@click:close="appStore.setRotationStoppedWarning(null)"
+				class="mb-0"
+			>
+				{{ appStore.rotationStoppedWarning }}
+			</v-alert>
 			<div class="flex items-center justify-between">
 				<div class="text-h5">Коллекции обоев</div>
 			</div>

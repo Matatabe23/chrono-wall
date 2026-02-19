@@ -36,7 +36,7 @@
 					size="large"
 					variant="tonal"
 					:color="appStore.rotationMode === 'queue' ? 'primary' : undefined"
-					@click="appStore.rotationMode = 'queue'"
+					@click="setRotationMode('queue')"
 					title="Очереди (новые → старые)"
 				>
 					<v-icon>mdi-format-list-bulleted</v-icon>
@@ -46,7 +46,7 @@
 					size="large"
 					variant="tonal"
 					:color="appStore.rotationMode === 'random' ? 'primary' : undefined"
-					@click="appStore.rotationMode = 'random'"
+					@click="setRotationMode('random')"
 					title="Рандомно без повторений"
 				>
 					<v-icon>mdi-shuffle-variant</v-icon>
@@ -63,7 +63,7 @@
 					size="large"
 					variant="tonal"
 					:color="appStore.wallpaperTarget === 'both' ? 'primary' : undefined"
-					@click="appStore.wallpaperTarget = 'both'"
+					@click="setWallpaperTarget('both')"
 					title="Экран и блокировка"
 				>
 					<v-icon>mdi-cellphone</v-icon>
@@ -73,7 +73,7 @@
 					size="large"
 					variant="tonal"
 					:color="appStore.wallpaperTarget === 'lock' ? 'primary' : undefined"
-					@click="appStore.wallpaperTarget = 'lock'"
+					@click="setWallpaperTarget('lock')"
 					title="Только блокировка"
 				>
 					<v-icon>mdi-lock</v-icon>
@@ -83,7 +83,7 @@
 					size="large"
 					variant="tonal"
 					:color="appStore.wallpaperTarget === 'home' ? 'primary' : undefined"
-					@click="appStore.wallpaperTarget = 'home'"
+					@click="setWallpaperTarget('home')"
 					title="Только главный экран"
 				>
 					<v-icon>mdi-home</v-icon>
@@ -120,6 +120,25 @@
 	const settingsOpen = ref(false);
 	const appStore = useAppStore();
 
+	const ROTATION_STOPPED_MESSAGE = 'Ротация отключена: изменены настройки. Запустите коллекцию заново.';
+
+	async function stopRotationIfActive() {
+		if (appStore.isRotating) {
+			await appStore.pauseRotation();
+			appStore.setRotationStoppedWarning(ROTATION_STOPPED_MESSAGE);
+		}
+	}
+
+	async function setRotationMode(mode) {
+		await stopRotationIfActive();
+		appStore.rotationMode = mode;
+	}
+
+	async function setWallpaperTarget(target) {
+		await stopRotationIfActive();
+		appStore.wallpaperTarget = target;
+	}
+
 	// Минимальный интервал смены обоев — 15 минут
 	const durations = [15, 30, 60, 120, 180, 300, 600, 900, 1440];
 	function fmtLabel(m) {
@@ -145,7 +164,8 @@
 
 	const sliderIndex = computed({
 		get: () => nearestIndex(appStore.intervalMinutes),
-		set: (i) => {
+		set: async (i) => {
+			await stopRotationIfActive();
 			const m = durations[i] ?? durations[0];
 			appStore.intervalMinutes = m;
 		}
