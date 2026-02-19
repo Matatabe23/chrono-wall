@@ -152,7 +152,7 @@
 </template>
 
 <script setup lang="ts">
-	import { ref, onMounted } from 'vue';
+	import { ref, onMounted, nextTick } from 'vue';
 	import { createCollection as createCollectionApi, listCollections, readAppFile, deleteCollection } from '~/helpers/tauri/file';
 	import { useRouter } from 'vue-router';
 	import UniversalModel from '~/components/UniversalModel.vue';
@@ -220,9 +220,21 @@
 
 	async function toggleCollection(c: { id: string; name: string }) {
 		if (isActive(c.id)) {
-			appStore.pauseRotation();
+			try {
+				await appStore.pauseRotation();
+				// Принудительно обновляем UI после паузы
+				await nextTick();
+			} catch (e) {
+				console.error('Failed to pause rotation:', e);
+			}
 		} else {
-			await appStore.startCollection(c.id);
+			try {
+				await appStore.startCollection(c.id);
+				// Принудительно обновляем UI после старта
+				await nextTick();
+			} catch (e) {
+				console.error('Failed to start collection:', e);
+			}
 		}
 	}
 

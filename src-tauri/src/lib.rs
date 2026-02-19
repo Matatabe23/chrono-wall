@@ -445,6 +445,7 @@ fn stop_wallpaper_rotation_service_android() -> Result<(), String> {
   .map_err(|e| format!("putBoolean: {}", e))?;
   env.call_method(&editor, "apply", "()V", &[]).map_err(|e| format!("apply: {}", e))?;
 
+  // Пытаемся остановить сервис, но не падаем если он уже остановлен или не существует
   let intent_class = env.find_class("android/content/Intent").map_err(|e| format!("Find Intent: {}", e))?;
   let service_class = env.find_class("ru/qugor/chronowall/WallpaperRotationService").map_err(|e| format!("Find Service: {}", e))?;
   let intent = env
@@ -453,8 +454,9 @@ fn stop_wallpaper_rotation_service_android() -> Result<(), String> {
       JValue::Object(&service_class).into(),
     ])
     .map_err(|e| format!("New Intent: {}", e))?;
-  env.call_method(&context, "stopService", "(Landroid/content/Intent;)Z", &[JValue::Object(&intent).into()])
-    .map_err(|e| format!("stopService: {}", e))?;
+  // stopService возвращает boolean - игнорируем результат, чтобы не падать если сервис не запущен
+  let _stopped = env.call_method(&context, "stopService", "(Landroid/content/Intent;)Z", &[JValue::Object(&intent).into()])
+    .ok();
   Ok(())
 }
 

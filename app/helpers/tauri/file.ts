@@ -88,7 +88,12 @@ export async function deleteAppFile(path: string): Promise<void> {
  * Установить изображение как обои устройства (Android).
  */
 export async function setDeviceWallpaper(path: string, target: 'both' | 'home' | 'lock' = 'both'): Promise<void> {
-	await invoke('set_device_wallpaper_target', { path, target });
+	try {
+		await invoke('set_device_wallpaper_target', { path, target });
+	} catch (e) {
+		console.error('Failed to set wallpaper:', e);
+		throw e;
+	}
 }
 
 /**
@@ -165,18 +170,28 @@ export async function startWallpaperRotationService(params: {
 	lastChangeAt: number;
 	sequence: string[];
 }): Promise<void> {
-	await invoke('start_wallpaper_rotation_service', {
-		intervalMinutes: Math.max(15, params.intervalMinutes),
-		target: params.target,
-		rotationIndex: params.rotationIndex,
-		lastChangeAt: params.lastChangeAt,
-		sequence: params.sequence
-	});
+	try {
+		await invoke('start_wallpaper_rotation_service', {
+			intervalMinutes: Math.max(15, params.intervalMinutes),
+			target: params.target,
+			rotationIndex: params.rotationIndex,
+			lastChangeAt: params.lastChangeAt,
+			sequence: params.sequence
+		});
+	} catch (e) {
+		console.error('Failed to start wallpaper rotation service:', e);
+		// Не пробрасываем ошибку дальше - приложение должно продолжать работать
+	}
 }
 
 /** Остановить фоновый сервис смены обоев (Android). */
 export async function stopWallpaperRotationService(): Promise<void> {
-	await invoke('stop_wallpaper_rotation_service');
+	try {
+		await invoke('stop_wallpaper_rotation_service');
+	} catch (e) {
+		console.error('Failed to stop wallpaper rotation service:', e);
+		// Не пробрасываем ошибку дальше - возможно сервис уже остановлен
+	}
 }
 
 /** Обновить состояние ротации в prefs (Android), чтобы сервис и таймер были в синхронизации. */
@@ -187,13 +202,18 @@ export async function updateRotationPrefs(params: {
 	lastChangeAt: number;
 	sequence: string[];
 }): Promise<void> {
-	await invoke('update_rotation_prefs', {
-		intervalMinutes: params.intervalMinutes,
-		target: params.target,
-		rotationIndex: params.rotationIndex,
-		lastChangeAt: params.lastChangeAt,
-		sequence: params.sequence
-	});
+	try {
+		await invoke('update_rotation_prefs', {
+			intervalMinutes: params.intervalMinutes,
+			target: params.target,
+			rotationIndex: params.rotationIndex,
+			lastChangeAt: params.lastChangeAt,
+			sequence: params.sequence
+		});
+	} catch (e) {
+		console.error('Failed to update rotation prefs:', e);
+		// Не пробрасываем ошибку дальше
+	}
 }
 
 /** Получить текущее состояние ротации из prefs (Android). Для синхронизации при открытии приложения. */

@@ -295,8 +295,19 @@
 	}
 
 	onMounted(async () => {
-		await loadTitle();
-		await loadImages();
+		// Откладываем загрузку данных, чтобы избежать вылета при открытии страницы
+		setTimeout(async () => {
+			try {
+				await loadTitle();
+			} catch (e) {
+				console.error('Failed to load title:', e);
+			}
+			try {
+				await loadImages();
+			} catch (e) {
+				console.error('Failed to load images:', e);
+			}
+		}, 300);
 	});
 	watch(currentPage, async () => {
 		if (currentPage.value > totalPages.value) currentPage.value = totalPages.value;

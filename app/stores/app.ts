@@ -57,7 +57,11 @@ export const useAppStore = defineStore('app', () => {
 			rotationMode.value = savedRotation as 'queue' | 'random';
 		}
 		const savedActive = localStorage.getItem('activeCollectionId');
-		if (savedActive) activeCollectionId.value = savedActive;
+		if (savedActive) {
+			activeCollectionId.value = savedActive;
+			// Если есть активная коллекция, считаем что ротация была включена
+			isRotating.value = true;
+		}
 		const savedIdx = localStorage.getItem('rotationIndex');
 		if (savedIdx) currentIndex.value = Math.max(0, Number(savedIdx) || 0);
 		const savedLast = localStorage.getItem('rotationLastChangeAt');
@@ -192,15 +196,14 @@ export const useAppStore = defineStore('app', () => {
 				await applyWallpaper(nextPath);
 				lastChangeAt.value = Date.now();
 				persistRotation();
-				try {
-					await updateRotationPrefs({
-						intervalMinutes: Math.max(MIN_INTERVAL_MINUTES, intervalMinutes.value),
-						target: wallpaperTarget.value,
-						rotationIndex: currentIndex.value,
-						lastChangeAt: lastChangeAt.value ?? 0,
-						sequence: sequence.value
-					});
-				} catch (_) {}
+				// Обновляем prefs асинхронно, не блокируя основной поток
+				updateRotationPrefs({
+					intervalMinutes: Math.max(MIN_INTERVAL_MINUTES, intervalMinutes.value),
+					target: wallpaperTarget.value,
+					rotationIndex: currentIndex.value,
+					lastChangeAt: lastChangeAt.value ?? 0,
+					sequence: sequence.value
+				}).catch(() => {});
 			} finally {
 				scheduleNext();
 			}
@@ -212,33 +215,64 @@ export const useAppStore = defineStore('app', () => {
 		activeCollectionId.value = id;
 		isRotating.value = true;
 		currentIndex.value = 0;
-		sequence.value = await loadSequenceForCollection(id);
+		try {
+			sequence.value = await loadSequenceForCollection(id);
+		} catch (e) {
+			// Если не удалось загрузить последовательность, очищаем состояние
+			isRotating.value = false;
+			activeCollectionId.value = null;
+			persistRotation();
+			throw e;
+		}
 		if (sequence.value.length === 0) {
 			isRotating.value = false;
+			activeCollectionId.value = null;
+			persistRotation();
 			return;
 		}
-		await applyWallpaper(sequence.value[currentIndex.value]);
-		lastChangeAt.value = Date.now();
-		persistRotation();
-		scheduleNext();
-		try {
-			await startWallpaperRotationService({
-				intervalMinutes: Math.max(MIN_INTERVAL_MINUTES, intervalMinutes.value),
-				target: wallpaperTarget.value,
-				rotationIndex: currentIndex.value,
-				lastChangeAt: lastChangeAt.value ?? Date.now(),
-				sequence: sequence.value
-			});
-		} catch (_) {}
+		// Откладываем установку обоев и запуск сервиса, чтобы избежать вылета
+		setTimeout(async () => {
+			try {
+				await applyWallpaper(sequence.value[currentIndex.value]);
+				lastChangeAt.value = Date.now();
+				persistRotation();
+				scheduleNext();
+				// Запускаем фоновый сервис с дополнительной задержкой
+				setTimeout(async () => {
+					try {
+						await startWallpaperRotationService({
+							intervalMinutes: Math.max(MIN_INTERVAL_MINUTES, intervalMinutes.value),
+							target: wallpaperTarget.value,
+							rotationIndex: currentIndex.value,
+							lastChangeAt: lastChangeAt.value ?? Date.now(),
+							sequence: sequence.value
+						});
+					} catch (e) {
+						console.error('Failed to start background service:', e);
+					}
+				}, 1000);
+			} catch (e) {
+				console.error('Failed to apply wallpaper:', e);
+				// Не падаем, продолжаем работу
+			}
+		}, 300);
 	}
 
-	function pauseRotation() {
+	async function pauseRotation() {
 		clearTimer();
 		isRotating.value = false;
+		// Очищаем activeCollectionId при паузе, чтобы UI правильно обновлялся
+		activeCollectionId.value = null;
 		persistRotation();
-		try {
-			stopWallpaperRotationService();
-		} catch (_) {}
+		// Останавливаем фоновый сервис с задержкой и обработкой ошибок
+		setTimeout(async () => {
+			try {
+				await stopWallpaperRotationService();
+			} catch (e) {
+				// Игнорируем ошибки остановки сервиса - возможно он уже остановлен или не запущен
+				console.warn('Failed to stop wallpaper rotation service:', e);
+			}
+		}, 300);
 	}
 
 	function resumeRotation() {
@@ -256,15 +290,15 @@ export const useAppStore = defineStore('app', () => {
 	async function restoreRotationIfNeeded() {
 		if (typeof window === 'undefined') return;
 		const id = activeCollectionId.value;
-		if (!id || isRotating.value) return;
-		// Восстанавливаем только состояние из localStorage, без нативных вызовов
-		// Последовательность загрузится позже, когда пользователь взаимодействует с коллекцией
-		// или когда таймер попытается сработать (там будет проверка и загрузка)
+		if (!id) return;
+		// Если ротация уже активна, ничего не делаем
+		if (isRotating.value) return;
+		// Восстанавливаем только флаг isRotating для правильного отображения в UI
+		// НЕ загружаем последовательность и НЕ запускаем таймер/сервис при старте
+		// Это предотвращает вылет при открытии приложения
 		isRotating.value = true;
 		persistRotation();
-		// Не запускаем scheduleNext() пока нет последовательности - она загрузится при первом взаимодействии
-		// Фоновый сервис НЕ запускаем при восстановлении - только при явном старте пользователем
-		// Это предотвращает вылет при открытии приложения
+		// Последовательность загрузится когда пользователь откроет коллекцию или когда таймер попытается сработать
 	}
 
 	return {
