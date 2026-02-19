@@ -60,6 +60,8 @@ export default {
 	addPhoto: {
 		title: 'Добавить фото в коллекцию "{name}"',
 		pickImage: 'Выбрать изображение',
+		pickImages: 'Выбрать фото',
+		addingBatch: 'Добавляем {current} из {total}',
 		imagesFilter: 'Изображения',
 	},
 
