@@ -1,6 +1,6 @@
 <template>
 	<v-container class="py-6">
-		<div class="flex flex-col gap-6">
+		<div class="flex flex-col gap-6 pb-14">
 			<v-alert
 				v-if="appStore.rotationStoppedWarning"
 				type="warning"
