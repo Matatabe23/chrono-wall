@@ -239,6 +239,7 @@
 		try {
 			const screenW = screenSize.value?.width ?? windowSize.value.width
 			const screenH = screenSize.value?.height ?? windowSize.value.height
+			const ratio = gridAspectRatio.value
 
 			let colMeta: any = null
 			try {
@@ -257,16 +258,57 @@
 				const baseName = (path.split(/[/\\]/).pop() ?? `image_${Date.now()}_${i}.jpg`).replace(/\.(jpe?g|png|gif|bmp)$/i, '.webp')
 				const fileName = /\.webp$/i.test(baseName) ? baseName : `${baseName}.webp`
 
-				const { uint8, width, height } = await loadImageAsWebp(path)
-				await saveFileToCollection(props.collection.id, fileName, { contents: uint8 })
+				const { readFile } = await import('@tauri-apps/plugin-fs')
+				const data = await readFile(path)
+				const bytes = data instanceof ArrayBuffer ? new Uint8Array(data) : new Uint8Array(data)
+				const ext = path.split('.').pop()?.toLowerCase() || 'jpg'
+				const mimeTypes: Record<string, string> = {
+					jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', gif: 'image/gif', webp: 'image/webp', bmp: 'image/bmp'
+				}
+				const blob = new Blob([bytes], { type: mimeTypes[ext] || 'image/jpeg' })
+				const url = URL.createObjectURL(blob)
+				let iw = 0, ih = 0
+				let cropX = 0, cropY = 0, cropW = 0, cropH = 0
+				let outArray: Uint8Array | null = null
+				try {
+					const img = await loadImageForCrop(url)
+					iw = img.naturalWidth
+					ih = img.naturalHeight
+					cropW = iw
+					cropH = Math.round(cropW / ratio)
+					if (cropH > ih) {
+						cropH = ih
+						cropW = Math.round(cropH * ratio)
+					}
+					cropX = Math.round((iw - cropW) / 2)
+					cropY = Math.round((ih - cropH) / 2)
+					const canvas = document.createElement('canvas')
+					canvas.width = cropW
+					canvas.height = cropH
+					const ctx = canvas.getContext('2d')
+					if (!ctx) throw new Error('Canvas 2d not available')
+					ctx.drawImage(
+						img,
+						cropX, cropY, cropW, cropH,
+						0, 0, cropW, cropH
+					)
+					const outBlob = await new Promise<Blob>((resolve, reject) => {
+						canvas.toBlob((b) => (b ? resolve(b) : reject(new Error('toBlob failed'))), 'image/webp', 0.95)
+					})
+					outArray = new Uint8Array(await outBlob.arrayBuffer())
+				} finally {
+					URL.revokeObjectURL(url)
+				}
+				if (!outArray) throw new Error('Failed to process image')
+				await saveFileToCollection(props.collection.id, fileName, { contents: outArray })
 
 				colMeta.items.push({
 					id: nextId++,
 					order: nextOrder++,
 					file: fileName,
 					screen: { width: screenW, height: screenH },
-					image: { width, height },
-					crop: { x: 0, y: 0, width, height },
+					image: { width: iw, height: ih },
+					crop: { x: cropX, y: cropY, width: cropW, height: cropH },
 					savedAsCrop: true,
 					created_at: Date.now()
 				})

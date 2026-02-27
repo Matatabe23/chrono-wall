@@ -5,7 +5,7 @@
 	"identifier": "ru.qugor.chronowall",
 	"build": {
 		"frontendDist": "../.output/public",
-		"devUrl": "http://192.168.0.101:3000",
+		"devUrl": "http://localhost:3000",
 		"beforeDevCommand": "npm run dev",
 		"beforeBuildCommand": "npm run generate"
 	},
